@@ -25,7 +25,12 @@ if (Test-Path $CONFIG_FILE) {
             $key = $matches[1]
             $val = $matches[2]
             Write-Host "DEBUG: Set $key = *** (hidden)" -ForegroundColor DarkGray
-            Set-Variable -Name $key -Value $val -Scope Global
+            switch ($key) {
+                "GITLAB_TOKEN" { $script:GITLAB_TOKEN = $val }
+                "GITLAB_BASE_URL" { $script:GITLAB_BASE_URL = $val }
+                "WORKSPACE_DIR" { $script:WORKSPACE_DIR = $val }
+                "GIT_PROTOCOL" { $script:GIT_PROTOCOL = $val }
+            }
         } else {
             Write-Host "DEBUG: Line did not match regex" -ForegroundColor Yellow
         }
