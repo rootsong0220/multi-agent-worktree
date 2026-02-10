@@ -18,6 +18,17 @@ To install or update **mawt**, run the following command in your terminal:
 curl -fsSL https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.sh | bash
 ```
 
+**After Installation:**
+To use `mawt` immediately in your current terminal session, run:
+```bash
+# For Bash users
+source ~/.bashrc
+
+# For Zsh users
+source ~/.zshrc
+```
+Alternatively, simply restart your terminal.
+
 ### First-Time Setup
 During the first installation, the script will interactively ask for your preferences:
 1.  **Workspace Directory**: Where to store your repositories (default: `~/workspace`).

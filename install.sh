@@ -109,4 +109,14 @@ else
     echo "Configuration saved securely to $CONFIG_FILE (chmod 600)."
 fi
 
-echo "Installation/Update complete! Try running 'mawt --help'."
+echo ""
+echo "============================================================"
+echo "  Installation/Update complete!"
+echo "============================================================"
+echo ""
+echo "To use 'mawt' immediately in this current session, please run:"
+echo ""
+echo "    source $SHELL_CONFIG"
+echo ""
+echo "Alternatively, restart your terminal."
+echo "============================================================"
