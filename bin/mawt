@@ -139,11 +139,25 @@ ensure_cloned() {
     # Determine URL
     if [ "$GIT_PROTOCOL" == "https" ]; then
         REPO_URL="$http_url"
+        # Inject token if available for seamless auth
+        if [ -n "$GITLAB_TOKEN" ]; then
+             # Handle http or https
+             local proto="${REPO_URL%%://*}"
+             local rest="${REPO_URL#*://}"
+             # Use "oauth2" as username for GitLab Token auth
+             REPO_URL="${proto}://oauth2:${GITLAB_TOKEN}@${rest}"
+        fi
     else
         REPO_URL="$ssh_url"
     fi
 
-    echo "Cloning $repo_name ($REPO_URL)..."
+    # Mask token in logs
+    local DISPLAY_URL="$REPO_URL"
+    if [ -n "$GITLAB_TOKEN" ]; then
+        DISPLAY_URL="${REPO_URL/:$GITLAB_TOKEN@/:***@}"
+    fi
+
+    echo "Cloning $repo_name ($DISPLAY_URL)..."
     mkdir -p "$target_dir"
     git clone --bare "$REPO_URL" "$target_dir/.bare"
 
@@ -268,6 +282,11 @@ cmd_convert() {
 
 cmd_list() {
     echo "Managed Repositories in $WORKSPACE_DIR:"
+    if [ ! -d "$WORKSPACE_DIR" ] || [ -z "$(ls -A "$WORKSPACE_DIR" 2>/dev/null)" ]; then
+        echo "  No repositories found."
+        return
+    fi
+
     for repo in "$WORKSPACE_DIR"/*; do
         if [ -d "$repo/.bare" ]; then
             echo "- $(basename "$repo")"
