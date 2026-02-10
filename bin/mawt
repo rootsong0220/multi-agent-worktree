@@ -229,23 +229,92 @@ create_new_worktree() {
     if [ -z "$BASE_BRANCH" ]; then echo "No base branch selected."; exit 1; fi
 
     # 2. Input New Branch Name
-    read -p "Enter new branch name (e.g. feat/login): " NEW_BRANCH
-    if [ -z "$NEW_BRANCH" ]; then echo "Branch name required."; exit 1; fi
+    read -p "Enter new branch name (Leave empty to use '$BASE_BRANCH'): " NEW_BRANCH
+    
+    # Use Base Branch if empty
+    if [ -z "$NEW_BRANCH" ]; then
+        NEW_BRANCH="$BASE_BRANCH"
+    fi
 
     # 3. Create
     TARGET_WORKTREE="$repo_dir/$(basename "$NEW_BRANCH")"
-    # If path exists, append random suffix or ask? For now, assume simple mapping.
+    # If path exists, append random suffix.
     if [ -d "$TARGET_WORKTREE" ]; then
         TARGET_WORKTREE="${TARGET_WORKTREE}_$(date +%s)"
     fi
 
-    echo "Creating worktree '$NEW_BRANCH' from 'origin/$BASE_BRANCH'..."
-    git worktree add "$TARGET_WORKTREE" -b "$NEW_BRANCH" "origin/$BASE_BRANCH"
+    echo "Creating worktree for '$NEW_BRANCH'..."
+
+    # Check if branch exists locally
+    if git show-ref --verify --quiet "refs/heads/$NEW_BRANCH"; then
+        echo "Branch '$NEW_BRANCH' already exists locally."
+        # Try to attach.
+        if ! git worktree add "$TARGET_WORKTREE" "$NEW_BRANCH" 2>/dev/null; then
+             echo "Error: Branch '$NEW_BRANCH' is already checked out in another worktree."
+             read -p "Force create? (y/N) " force
+             if [[ "$force" == "y" || "$force" == "Y" ]]; then
+                 git worktree add -f "$TARGET_WORKTREE" "$NEW_BRANCH"
+             else
+                 echo "Aborted."
+                 exit 1
+             fi
+        fi
+    else
+        # Create new branch tracking origin
+        git worktree add "$TARGET_WORKTREE" -b "$NEW_BRANCH" "origin/$BASE_BRANCH"
+    fi
 }
 
 # ------------------------------------------------------------------
-# 4. Agent Launch
+# 4. Agent Launch & Auth
 # ------------------------------------------------------------------
+check_and_setup_auth() {
+    local agent="$1"
+    local key_var=""
+    local key_name=""
+
+    case "$agent" in
+        gemini) key_var="GEMINI_API_KEY"; key_name="Gemini API Key" ;;
+        claude) key_var="ANTHROPIC_API_KEY"; key_name="Anthropic API Key" ;;
+        codex)  key_var="OPENAI_API_KEY"; key_name="OpenAI API Key" ;;
+        *) return 0 ;; # No auth needed
+    esac
+
+    # Check if variable is set in current environment
+    if [ -z "${!key_var}" ]; then
+        echo ""
+        echo "Authentication check for '$agent'..."
+        echo "Choose authentication method:"
+        echo "1) API Key (Recommended for automation)"
+        echo "2) System/CLI Login (Use existing '$agent' credentials)"
+        echo "3) Skip"
+        
+        read -p "Select [1/2/3]: " choice
+        case "$choice" in
+            1)
+                 read -s -p "Enter $key_name: " input_key
+                 echo ""
+                 if [ -n "$input_key" ]; then
+                    # Append to config
+                    echo "" >> "$CONFIG_FILE"
+                    echo "export $key_var=\"$input_key\"" >> "$CONFIG_FILE"
+                    # Export for current session
+                    export "$key_var"="$input_key"
+                    echo "Saved to $CONFIG_FILE and exported."
+                 else
+                    echo "No key entered."
+                 fi
+                 ;;
+            2)
+                 echo "Using system credentials. Ensure you have run '$agent auth login'."
+                 ;;
+            *)
+                 echo "Skipping auth setup."
+                 ;;
+        esac
+    fi
+}
+
 launch_agent() {
     local wt_path="$1"
     
@@ -261,6 +330,12 @@ launch_agent() {
     local agents=("gemini" "claude" "codex" "shell")
     AGENT=$(printf "%s\n" "${agents[@]}" | fzf --prompt="Agent> " --height=10 --layout=reverse) || true
 
+    if [ -z "$AGENT" ]; then echo "No agent selected."; exit 0; fi
+
+    # Check Auth before launch
+    check_and_setup_auth "$AGENT"
+
+    echo "Launching $AGENT..."
     case "$AGENT" in
         gemini)
             if command -v gemini &> /dev/null; then gemini; else echo "gemini not found"; fi ;;
@@ -271,9 +346,6 @@ launch_agent() {
         shell)
             echo "Starting shell..."
             $SHELL
-            ;;
-        *)
-            echo "No agent selected."
             ;;
     esac
 }
