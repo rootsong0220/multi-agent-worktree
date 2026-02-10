@@ -285,6 +285,24 @@ check_and_setup_auth() {
         *) return 0 ;; # No auth needed
     esac
 
+    # Gemini Special Handling: Auth Mode Selection
+    if [ "$agent" == "gemini" ]; then
+        if [ -z "$GEMINI_AUTH_MODE" ]; then
+            # Auto-detect: If API Key is present, assume API mode.
+            # Otherwise, default to OAuth (System Login).
+            if [ -n "$GEMINI_API_KEY" ]; then
+                GEMINI_AUTH_MODE="api"
+            else
+                GEMINI_AUTH_MODE="oauth"
+            fi
+        fi
+
+        if [ "$GEMINI_AUTH_MODE" == "oauth" ]; then
+            # Skip API key check for OAuth
+            return 0
+        fi
+    fi
+
     # Check if variable is set in current environment
     if [ -z "${!key_var}" ]; then
         echo ""

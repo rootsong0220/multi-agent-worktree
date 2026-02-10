@@ -30,6 +30,7 @@ if (Test-Path $CONFIG_FILE) {
                 "GITLAB_BASE_URL" { $script:GITLAB_BASE_URL = $val }
                 "WORKSPACE_DIR" { $script:WORKSPACE_DIR = $val }
                 "GIT_PROTOCOL" { $script:GIT_PROTOCOL = $val }
+                "GEMINI_AUTH_MODE" { $env:GEMINI_AUTH_MODE = $val }
             }
         } else {
             Write-Host "DEBUG: Line did not match regex" -ForegroundColor Yellow
@@ -448,6 +449,24 @@ function Check-Auth {
         "codex"  { $keyVar = "OPENAI_API_KEY"; $keyName = "OpenAI API Key" }
     }
     
+    # Gemini Special Handling
+    if ($Agent -eq "gemini") {
+        if (-not (Get-Item "Env:GEMINI_AUTH_MODE" -ErrorAction SilentlyContinue)) {
+             # Auto-detect: If API Key is present, assume API mode.
+             # Otherwise, default to OAuth (System Login).
+             if (Get-Item "Env:GEMINI_API_KEY" -ErrorAction SilentlyContinue) {
+                 $env:GEMINI_AUTH_MODE = "api"
+             } else {
+                 $env:GEMINI_AUTH_MODE = "oauth"
+             }
+        }
+        
+        if ($env:GEMINI_AUTH_MODE -eq "oauth") {
+            # Skip API key check
+            return
+        }
+    }
+
     if ($keyVar -and -not (Get-Item "Env:$keyVar" -ErrorAction SilentlyContinue)) {
         Write-Host "Authentication required for $Agent."
         $choice = Read-Host "1) Enter API Key  2) Skip (Use system auth) [1/2]"

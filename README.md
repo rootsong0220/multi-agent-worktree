@@ -110,6 +110,13 @@ MAWT CLI 도구와 설정 파일을 시스템에서 제거합니다.
 mawt uninstall
 ```
 
+### 5. 에이전트 인증 설정
+Gemini 에이전트 실행 시, 인증 방식은 **자동으로 감지**됩니다.
+- **OAuth (기본값):** `GEMINI_API_KEY` 환경 변수가 설정되어 있지 않으면 OAuth(브라우저 로그인) 방식을 사용합니다.
+- **API Key:** `GEMINI_API_KEY` 환경 변수가 설정되어 있으면 API Key 방식을 사용합니다.
+
+수동으로 모드를 지정하려면 설정 파일(`~/.mawt/config`)이나 환경 변수로 `GEMINI_AUTH_MODE`를 `oauth` 또는 `api`로 설정하세요.
+
 ## 개발 로드맵
 
 상세 개발 계획은 [ROADMAP.md](ROADMAP.md)를 참고하세요.
