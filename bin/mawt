@@ -6,7 +6,16 @@
 set -e
 
 MAWT_ROOT="$HOME/.mawt"
-WORKSPACE_DIR="$HOME/workspace" # Default workspace directory
+CONFIG_FILE="$MAWT_ROOT/config"
+
+# Load config or set default
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+
+if [ -z "$WORKSPACE_DIR" ]; then
+    WORKSPACE_DIR="$HOME/workspace" # Default workspace directory
+fi
 
 check_deps() {
     local deps=("git" "fzf")
@@ -192,6 +201,34 @@ cmd_work() {
     esac
 }
 
+# Command: List Managed Repositories & Worktrees
+cmd_list() {
+    echo "Managed Repositories in $WORKSPACE_DIR:"
+    if [ ! -d "$WORKSPACE_DIR" ]; then
+        echo "  No workspace found at $WORKSPACE_DIR"
+        return
+    fi
+
+    for repo in "$WORKSPACE_DIR"/*; do
+        if [ -d "$repo" ]; then
+            repo_name=$(basename "$repo")
+            if [ -d "$repo/.bare" ]; then
+                echo "- $repo_name (Worktree Managed)"
+                # List worktrees
+                cd "$repo/.bare"
+                git worktree list | while read line; do
+                    wt_path=$(echo "$line" | awk '{print $1}')
+                    wt_branch=$(echo "$line" | awk '{print $3}' | sed 's/\[//;s/\]//')
+                    if [[ "$wt_path" == *".bare" ]]; then continue; fi # Skip bare repo entry
+                    echo "    - $(basename "$wt_path") [$wt_branch]"
+                done
+            elif [ -d "$repo/.git" ]; then
+                echo "- $repo_name (Standard Repo)"
+            fi
+        fi
+    done
+}
+
 # Main Dispatch
 case "$1" in
     init)
@@ -201,6 +238,9 @@ case "$1" in
     work)
         shift
         cmd_work "$@"
+        ;;
+    list)
+        cmd_list
         ;;
     help|--help|-h)
         echo "Usage: mawt <command> [args]"

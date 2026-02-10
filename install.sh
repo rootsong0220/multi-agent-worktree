@@ -58,3 +58,20 @@ if [ -n "$SHELL_CONFIG" ]; then
 fi
 
 echo "Installation complete! Try running 'mawt --help'."
+
+# 5. Configure Workspace
+echo ""
+echo "--- Workspace Configuration ---"
+read -p "Enter directory to use as workspace (default: $HOME/workspace): " USER_WS
+USER_WS=${USER_WS:-"$HOME/workspace"}
+
+# Expand tilde if present
+USER_WS="${USER_WS/#\~/$HOME}"
+
+echo "Using workspace: $USER_WS"
+mkdir -p "$USER_WS"
+
+CONFIG_FILE="$INSTALL_DIR/config"
+echo "WORKSPACE_DIR=\"$USER_WS\"" > "$CONFIG_FILE"
+echo "Configuration saved to $CONFIG_FILE."
+
