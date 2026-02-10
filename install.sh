@@ -87,6 +87,26 @@ for dep in "${deps[@]}"; do
 done
 
 # Function to check and install AI CLI tools via NPM
+check_node_version() {
+    if command -v node &> /dev/null; then
+        local node_ver
+        node_ver=$(node -v | cut -d'v' -f2) # e.g., 20.11.0
+        local major_ver
+        major_ver=$(echo "$node_ver" | cut -d'.' -f1)
+
+        if [ "$major_ver" -lt 18 ]; then
+            echo "Warning: Your Node.js version is $node_ver (v18+ recommended for AI CLIs)."
+            echo "Some AI tools might not work correctly."
+            echo "Recommended action: Install 'nvm' and run 'nvm install --lts'"
+            read -p "Continue anyway? (y/N) " confirm < /dev/tty
+            if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+                echo "Aborting installation to let you update Node.js."
+                exit 1
+            fi
+        fi
+    fi
+}
+
 check_ai_cli() {
     local tool_cmd="$1"
     local npm_pkg="$2"
@@ -98,6 +118,9 @@ check_ai_cli() {
             echo "npm not found. Cannot install '$tool_cmd'."
             return
         fi
+
+        # Check Node version before first install attempt
+        check_node_version
 
         read -p "Install '$tool_cmd' via npm? (y/N) " confirm < /dev/tty
         if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
