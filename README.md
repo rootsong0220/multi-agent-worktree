@@ -43,31 +43,37 @@ To update `mawt` to the latest version, simply run the installation command agai
 ## Usage
 
 ### 1. Initialize a Repository (`init`)
-Prepares a repository for worktree management. It automatically uses your preferred protocol (SSH/HTTPS).
+Prepares a repository for worktree management. You can provide arguments or use the interactive mode.
 
 ```bash
-# Using a full URL
-mawt init https://gitlab.com/group/project.git
-
-# Using a short path (uses your configured protocol)
+mawt init
+# Follow the prompts to enter the repo URL or path
+```
+Or directly:
+```bash
 mawt init group/project
 ```
-- If the folder exists as a **standard repo**, it will ask to convert it to a worktree structure.
-- If it's already a **bare repo**, it confirms readiness.
 
 ### 2. Start an Agent Session (`work`)
-Creates a new isolated worktree and launches an AI agent inside it.
+Creates a new isolated worktree and launches an AI agent.
 
+**Interactive Mode (Recommended):**
+```bash
+mawt work
+```
+1.  Select a repository from your workspace.
+2.  Choose an agent (`gemini`, `claude`, `codex`).
+3.  Enter a name for the task (e.g., `fix-bug`).
+
+**Direct Mode:**
 ```bash
 # Syntax: mawt work <repo_name> <agent_name> [task_name]
 mawt work my-project gemini fix-login-bug
 ```
-- **repo_name**: The folder name in your workspace.
-- **agent_name**: `gemini`, `claude`, or `codex`.
-- **task_name**: (Optional) Name for the new worktree/branch. If omitted, you will be prompted.
 
 ### 3. List Repositories (`list`)
 Shows all repositories managed by MAWT and their active worktrees.
+
 
 ```bash
 mawt list

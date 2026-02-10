@@ -39,9 +39,16 @@ is_wsl() {
 # Command: Init (Clone Repo as Bare for Worktrees)
 cmd_init() {
     local repo_input="$1"
+    
+    # Interactive Prompt if argument is missing
     if [ -z "$repo_input" ]; then
-        echo "Usage: mawt init <repo_url_or_path>"
-        exit 1
+        echo "Initialize Repository for Worktree Management"
+        echo "---------------------------------------------"
+        read -p "Enter repository URL or path (e.g., group/project): " repo_input
+        if [ -z "$repo_input" ]; then
+            echo "Error: Repository is required."
+            exit 1
+        fi
     fi
 
     # Determine protocol & URL
@@ -54,11 +61,8 @@ cmd_init() {
         if [ "$GIT_PROTOCOL" == "https" ]; then
             REPO_URL="https://gitlab.com/${repo_input}.git"
             PROTOCOL="https"
-            # Optional: Add token to URL for clone if provided (Use with caution due to history/ps)
-            # Safer: Rely on git credential helper or .netrc
             if [ -n "$GITLAB_TOKEN" ]; then
                 echo "Note: HTTPS selected. Ensure your git credential helper is configured or use manual auth."
-                # Alternatively, construct https://oauth2:TOKEN@gitlab.com/... but that leaks in 'git remote -v'
             fi
         else
             REPO_URL="git@gitlab.com:${repo_input}.git"
@@ -136,8 +140,6 @@ cmd_convert() {
     git config --bool core.bare true
     
     # 3. Create worktree for current checkout
-    # We need to know which branch was checked out. Assuming 'main' or 'master' for simplicity or asking user.
-    # For now, let's just create a 'main' worktree from HEAD.
     branch_name=$(git symbolic-ref --short HEAD)
     echo "Detected current branch: $branch_name"
     
@@ -155,21 +157,62 @@ cmd_work() {
     local agent="$2"
     local task_name="$3"
 
-    if [ -z "$repo_name" ] || [ -z "$agent" ]; then
-        echo "Usage: mawt work <repo_name> <agent> [task_name]"
-        echo "Agents: gemini, claude, codex"
-        exit 1
+    # 1. Interactive Repo Selection
+    if [ -z "$repo_name" ]; then
+        echo "Select a repository:"
+        # List dirs in workspace that are likely repos
+        if [ ! -d "$WORKSPACE_DIR" ]; then
+            echo "Workspace directory not found. Run 'mawt init' first."
+            exit 1
+        fi
+        
+        # Capture directories into an array safely
+        mapfile -t repos < <(ls -d "$WORKSPACE_DIR"/*/ 2>/dev/null | xargs -n 1 basename)
+        
+        if [ ${#repos[@]} -eq 0 ]; then
+            echo "No repositories found in $WORKSPACE_DIR. Run 'mawt init' first."
+            exit 1
+        fi
+        
+        select r in "${repos[@]}"; do
+            if [ -n "$r" ]; then
+                repo_name="$r"
+                break
+            else
+                echo "Invalid selection. Please try again."
+            fi
+        done
     fi
 
     local repo_dir="$WORKSPACE_DIR/$repo_name"
     if [ ! -d "$repo_dir/.bare" ]; then
-        echo "Error: Repository '$repo_name' not initialized for worktrees."
-        echo "Run 'mawt init <url>' first."
+        echo "Error: Repository '$repo_name' not initialized for worktrees (missing .bare)."
+        echo "Run 'mawt init' to set up a repo."
         exit 1
     fi
 
+    # 2. Interactive Agent Selection
+    if [ -z "$agent" ]; then
+        echo "Select an AI Agent:"
+        agents=("gemini" "claude" "codex")
+        select a in "${agents[@]}"; do
+            if [ -n "$a" ]; then
+                agent="$a"
+                break
+            else
+                echo "Invalid selection. Please try again."
+            fi
+        done
+    fi
+
+    # 3. Interactive Task Name
     if [ -z "$task_name" ]; then
-        read -p "Enter a name for this task/worktree (e.g., fix-bug-123): " task_name
+        echo "Enter a name for this task/worktree (e.g., fix-login-bug):"
+        read -p "> " task_name
+        if [ -z "$task_name" ]; then
+            echo "Task name cannot be empty."
+            exit 1
+        fi
     fi
 
     local worktree_path="$repo_dir/$task_name"
@@ -179,6 +222,8 @@ cmd_work() {
     else
         echo "Creating worktree '$task_name'..."
         cd "$repo_dir/.bare"
+        # Check if the branch exists locally or remotely to determine creation logic
+        # For simplicity, we create a new branch from default/HEAD for the task
         git worktree add "$worktree_path" -b "feat/$task_name"
     fi
 
@@ -259,8 +304,8 @@ case "$1" in
         echo "Usage: mawt <command> [args]"
         echo ""
         echo "Commands:"
-        echo "  init <url>               Initialize a repo for worktree usage (bare clone)"
-        echo "  work <repo> <agent> [task] Create worktree & run agent"
+        echo "  init [url]               Initialize a repo (prompts if url missing)"
+        echo "  work [repo] [agent]      Create worktree & run agent (interactive)"
         echo "  list                     List managed repositories"
         echo "  help                     Show this help"
         ;;
