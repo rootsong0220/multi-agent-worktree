@@ -1,6 +1,30 @@
 # MAWT Installer for Windows (PowerShell)
 
 $ErrorActionPreference = "Stop"
+
+# Helper: Check Dependencies
+function Check-Deps {
+    $deps = @("git", "node", "npm") # Added node and npm
+    foreach ($dep in $deps) {
+        if (-not (Get-Command $dep -ErrorAction SilentlyContinue)) {
+            Write-Error "오류: '$dep'가 필요하지만 설치되어 있지 않습니다." -ForegroundColor Red
+            Write-Host "'$dep'를 설치하려면 다음 단계를 따르세요:" -ForegroundColor Yellow
+            if ($dep -eq "node" -or $dep -eq "npm") {
+                Write-Host "  1. Node.js 공식 웹사이트 (https://nodejs.org)에서 LTS 버전을 다운로드하여 설치합니다."
+                Write-Host "  2. 또는 Winget (Windows Package Manager)을 사용하는 경우 PowerShell에서 다음을 실행합니다:"
+                Write-Host "     winget install OpenJS.NodeJS.LTS"
+                Write-Host "  3. 설치 후 새 PowerShell 창을 열어 Path가 업데이트되었는지 확인합니다."
+            } else {
+                Write-Host "  해당 패키지 관리자를 사용하여 '$dep'를 수동으로 설치하십시오."
+            }
+            exit 1
+        }
+    }
+}
+
+# Run dependency check early
+Check-Deps
+
 $RepoUrl = "https://github.com/rootsong0220/multi-agent-worktree.git"
 $InstallDir = "$HOME\.mawt"
 $BinDir = "$InstallDir\bin"
