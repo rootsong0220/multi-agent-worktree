@@ -82,13 +82,37 @@ mawt work my-project gemini fix-login-bug
 ```
 
 ### 3. List Repositories (`list`)
+
 Shows all repositories managed by MAWT and their active worktrees.
 
 
+
 ```bash
+
 mawt list
+
 ```
 
+
+
+### 4. Uninstall (`uninstall`)
+
+Removes the MAWT CLI tool and configuration files.
+
+
+
+```bash
+
+mawt uninstall
+
+```
+
+*Note: Your workspace and repositories will NOT be deleted.*
+
+
+
 ## Roadmap
+
+
 
 See [ROADMAP.md](ROADMAP.md) for the detailed development plan.

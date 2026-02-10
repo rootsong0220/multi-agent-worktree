@@ -382,6 +382,21 @@ cmd_list() {
     done
 }
 
+# Command: Uninstall MAWT
+cmd_uninstall() {
+    echo "Warning: This will remove MAWT configuration and the CLI tool."
+    echo "Your workspace and repositories ($WORKSPACE_DIR) will NOT be deleted."
+    read -p "Are you sure you want to uninstall MAWT? (type 'yes' to confirm): " confirm
+    
+    if [ "$confirm" == "yes" ]; then
+        rm -rf "$MAWT_ROOT"
+        echo "MAWT uninstalled successfully."
+        echo "Please remove the PATH entry from your shell configuration manually if you wish."
+    else
+        echo "Uninstall cancelled."
+    fi
+}
+
 # Main Dispatch
 case "$1" in
     init)
@@ -395,6 +410,9 @@ case "$1" in
     list)
         cmd_list
         ;;
+    uninstall)
+        cmd_uninstall
+        ;;
     help|--help|-h)
         echo "Usage: mawt <command> [args]"
         echo ""
@@ -402,6 +420,7 @@ case "$1" in
         echo "  init [url]               Initialize a repo (fetches list from GitLab if url omitted)"
         echo "  work [repo] [agent]      Create worktree & run agent (interactive)"
         echo "  list                     List managed repositories"
+        echo "  uninstall                Remove MAWT CLI and configuration"
         echo "  help                     Show this help"
         ;;
     *)
