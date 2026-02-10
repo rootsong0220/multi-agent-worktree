@@ -98,17 +98,61 @@ Write-Host "'mawt.cmd' wrapper created at $BinDir" -ForegroundColor Green
 
 Write-Host "MAWT scripts installed to $BinDir" -ForegroundColor Green
 
-# 3. Add to PATH
+# Function to check and install AI CLI tools via NPM
+function Check-AiCli {
+    param (
+        [string]$ToolCommand,
+        [string]$NpmPackage
+    )
+
+    if (-not (Get-Command $ToolCommand -ErrorAction SilentlyContinue)) {
+        Write-Host "AI CLI '$ToolCommand' is not installed." -ForegroundColor Yellow
+        
+        if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+            Write-Host "npm이 없습니다. '$ToolCommand'를 설치할 수 없습니다." -ForegroundColor Yellow
+            return
+        }
+
+        $confirm = Read-Host "'$ToolCommand'를 npm으로 설치하시겠습니까? (y/N)"
+        if ($confirm -match "^[yY]$") {
+            Write-Host "'$NpmPackage'를 설치 중..." -ForegroundColor Cyan
+            try {
+                npm install -g $NpmPackage | Out-Null # Suppress npm output
+                Write-Host "'$ToolCommand'가 성공적으로 설치되었습니다." -ForegroundColor Green
+            } catch {
+                Write-Error "'$ToolCommand' 설치 실패: $($_.Exception.Message). 직접 실행해주세요: npm install -g $NpmPackage" -ForegroundColor Red
+            }
+        } else {
+            Write-Host "'$ToolCommand' 설치를 건너뜝니다. 나중에 직접 설치할 수 있습니다: npm install -g $NpmPackage" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "- AI CLI '$ToolCommand': 설치됨" -ForegroundColor Green
+    }
+}
+
+# 2. Check AI CLI Tools
+Write-Host "`n--- AI 에이전트 CLI 도구 확인 중 ---" -ForegroundColor Cyan
+
+# Gemini CLI
+Check-AiCli -ToolCommand "gemini" -NpmPackage "@google/gemini-cli"
+
+# Claude Code
+Check-AiCli -ToolCommand "claude" -NpmPackage "@anthropic-ai/claude-code"
+
+# Codex CLI
+Check-AiCli -ToolCommand "codex" -NpmPackage "@openai/codex"
+
+# 3. Add to PATH (Previous step 3, now moved after CLI checks)
 $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($CurrentPath -notlike "*$BinDir*") {
-    Write-Host "Adding $BinDir to User PATH..."
+    Write-Host "Adding $BinDir to User PATH..." -ForegroundColor Cyan
     [Environment]::SetEnvironmentVariable("Path", "$CurrentPath;$BinDir", "User")
     Write-Host "Path updated. You may need to restart your terminal." -ForegroundColor Yellow
 } else {
-    Write-Host "Path already configured."
+    Write-Host "Path already configured." -ForegroundColor DarkGray
 }
 
-# 4. Configuration
+# 4. Configuration (Previous step 4, now moved after Path config)
 Write-Host "`n--- Configuration ---" -ForegroundColor Cyan
 
 # Load existing config
