@@ -10,12 +10,58 @@ MAWT simplifies the workflow of using multiple AI agents on the same codebase wi
 - **Agent Dispatch**: Launches specific AI CLI tools in their own isolated worktrees.
 - **WSL Optimized**: Built with Windows Subsystem for Linux in mind.
 
-## Roadmap
+## Installation & Updates
 
-See [ROADMAP.md](ROADMAP.md) for the detailed development plan.
-
-## Installation (Coming Soon)
+To install or update **mawt**, run the following command in your terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.sh | bash
 ```
+
+### First-Time Setup
+During the first installation, the script will interactively ask for your preferences:
+1.  **Workspace Directory**: Where to store your repositories (default: `~/workspace`).
+2.  **Git Protocol**: Choose between `SSH` (recommended) or `HTTPS`.
+3.  **GitLab Token** (Optional): Securely saved for HTTPS authentication or agent usage.
+
+*These settings are saved to `~/.mawt/config`.*
+
+### Updating
+To update `mawt` to the latest version, simply run the installation command again. It will detect your existing configuration and update the binary without overwriting your settings.
+
+## Usage
+
+### 1. Initialize a Repository (`init`)
+Prepares a repository for worktree management. It automatically uses your preferred protocol (SSH/HTTPS).
+
+```bash
+# Using a full URL
+mawt init https://gitlab.com/group/project.git
+
+# Using a short path (uses your configured protocol)
+mawt init group/project
+```
+- If the folder exists as a **standard repo**, it will ask to convert it to a worktree structure.
+- If it's already a **bare repo**, it confirms readiness.
+
+### 2. Start an Agent Session (`work`)
+Creates a new isolated worktree and launches an AI agent inside it.
+
+```bash
+# Syntax: mawt work <repo_name> <agent_name> [task_name]
+mawt work my-project gemini fix-login-bug
+```
+- **repo_name**: The folder name in your workspace.
+- **agent_name**: `gemini`, `claude`, or `codex`.
+- **task_name**: (Optional) Name for the new worktree/branch. If omitted, you will be prompted.
+
+### 3. List Repositories (`list`)
+Shows all repositories managed by MAWT and their active worktrees.
+
+```bash
+mawt list
+```
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for the detailed development plan.
