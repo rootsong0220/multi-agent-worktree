@@ -70,7 +70,7 @@ function Select-Item {
         return $selected
     } else {
         # Text-based fallback
-        Write-Host "$PromptText:" -ForegroundColor Cyan
+        Write-Host "${PromptText}:" -ForegroundColor Cyan
         for ($i = 0; $i -lt $Items.Count; $i++) {
             Write-Host "[$($i+1)] $($Items[$i])"
         }
