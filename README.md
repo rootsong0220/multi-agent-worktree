@@ -9,15 +9,21 @@ MAWT(Multi-Agent Worktree Manager)는 Git Worktree를 활용하여 GitLab 저장
 - **자동 변환**: 기존의 일반 Git 저장소를 감지하여 Worktree 구조로 변환할 수 있습니다.
 - **에이전트 실행**: 각 AI 에이전트 도구를 독립된 워크트리 환경에서 실행하여 충돌을 방지합니다.
 - **인증 관리**: Private 저장소 접근을 위한 GitLab 토큰 자동 주입 및 AI 에이전트(Gemini, Claude 등) API Key 관리를 지원합니다.
-- **크로스 플랫폼**: Linux(WSL 포함) 및 macOS를 지원합니다.
+- **크로스 플랫폼**: Linux(WSL 포함), macOS, Windows(PowerShell)를 지원합니다.
 
 ## 필수 요구 사항
 
+### Linux / macOS
 - **도구**: `git`, `curl`, `jq`, `unzip`, `tar`
 - **선택 사항**: `fzf` (대화형 선택 메뉴를 위해 강력 권장, 없으면 설치 스크립트가 안내)
 
+### Windows
+- **도구**: PowerShell 5.1+, `git`
+- **선택 사항**: `fzf` (설치되어 있으면 사용, 없으면 `Out-GridView` 또는 텍스트 메뉴로 대체)
+
 ## 설치 및 업데이트
 
+### Linux / macOS
 터미널에서 아래 명령어를 실행하여 **mawt**를 설치하거나 최신 버전으로 업데이트할 수 있습니다.
 
 ```bash
@@ -34,6 +40,15 @@ source ~/.bashrc
 source ~/.zshrc
 ```
 또는 터미널을 재시작하면 됩니다.
+
+### Windows (PowerShell)
+PowerShell 터미널에서 아래 명령어를 실행하세요:
+
+```powershell
+irm https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.ps1 | iex
+```
+
+설치 후 터미널을 재시작하면 `mawt` 명령어를 사용할 수 있습니다.
 
 ### 초기 설정
 첫 설치 시, 다음과 같은 설정을 대화형으로 진행합니다:
