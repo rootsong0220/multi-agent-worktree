@@ -24,14 +24,27 @@ Write-Host "Installing Multi-Agent Worktree Manager (MAWT) from branch '$Install
 if (-not (Test-Path $BinDir)) {
     Write-Host "Creating installation directory: $BinDir" -ForegroundColor DarkGray
     New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+} else {
+    Write-Host "Installation directory already exists: $BinDir" -ForegroundColor DarkGray
 }
+Write-Host "MAWT installation directory set to: $InstallDir" -ForegroundColor DarkGray
+Write-Host "MAWT binaries directory set to: $BinDir" -ForegroundColor DarkGray
 
 # 2. Download MAWT Script
 $MawtScriptPath = "$BinDir\mawt.ps1"
 $ScriptUrl = "https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/$InstallBranch/bin/mawt.ps1"
-Write-Host "Downloading mawt.ps1 from branch '$InstallBranch' on GitHub to $MawtScriptPath..." -ForegroundColor Cyan
+Write-Host "Downloading mawt.ps1 from branch '$InstallBranch' on GitHub..." -ForegroundColor Cyan
+Write-Host "Targeting: $MawtScriptPath" -ForegroundColor DarkGray
 Invoke-WebRequest -Uri $ScriptUrl -OutFile $MawtScriptPath -UseBasicParsing
-Write-Host "MAWT script download complete." -ForegroundColor Green
+
+if (Test-Path $MawtScriptPath) {
+    Write-Host "MAWT script download complete." -ForegroundColor Green
+    Write-Host "Verifying downloaded mawt.ps1 content (first 8 lines):" -ForegroundColor DarkGray
+    (Get-Content -Path $MawtScriptPath -TotalCount 8) | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+} else {
+    Write-Error "Error: Failed to download mawt.ps1 to $MawtScriptPath." -ForegroundColor Red
+    exit 1
+}
 
 # Create a wrapper batch file for easy execution in cmd/powershell as 'mawt'
 $BatchContent = @"
@@ -39,9 +52,9 @@ $BatchContent = @"
 powershell -ExecutionPolicy Bypass -File "%~dp0mawt.ps1" %*
 "@
 Set-Content -Path "$BinDir\mawt.cmd" -Value $BatchContent
-Write-Host "'mawt.cmd' wrapper created at $BinDir" -ForegroundColor DarkGray
+Write-Host "'mawt.cmd' wrapper created at $BinDir" -ForegroundColor Green
 
-Write-Host "Installed to $BinDir" -ForegroundColor Green
+Write-Host "MAWT scripts installed to $BinDir" -ForegroundColor Green
 
 # 3. Add to PATH
 $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
