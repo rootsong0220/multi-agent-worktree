@@ -38,24 +38,37 @@ is_wsl() {
 
 # Command: Init (Clone Repo as Bare for Worktrees)
 cmd_init() {
-    local repo_url="$1"
-    if [ -z "$repo_url" ]; then
-        echo "Usage: mawt init <repo_url>"
+    local repo_input="$1"
+    if [ -z "$repo_input" ]; then
+        echo "Usage: mawt init <repo_url_or_path>"
         exit 1
     fi
 
-    # Determine protocol (SSH vs HTTPS)
-    if [[ "$repo_url" == git@* ]]; then
-        PROTOCOL="ssh"
-    elif [[ "$repo_url" == https://* ]]; then
-        PROTOCOL="https"
+    # Determine protocol & URL
+    if [[ "$repo_input" == git@* || "$repo_input" == https://* ]]; then
+        # Already a full URL
+        REPO_URL="$repo_input"
+        if [[ "$REPO_URL" == git@* ]]; then PROTOCOL="ssh"; else PROTOCOL="https"; fi
     else
-        echo "Invalid repository URL. Must start with git@ or https://"
-        exit 1
+        # Assume path like "namespace/project" -> Construct URL based on config
+        if [ "$GIT_PROTOCOL" == "https" ]; then
+            REPO_URL="https://gitlab.com/${repo_input}.git"
+            PROTOCOL="https"
+            # Optional: Add token to URL for clone if provided (Use with caution due to history/ps)
+            # Safer: Rely on git credential helper or .netrc
+            if [ -n "$GITLAB_TOKEN" ]; then
+                echo "Note: HTTPS selected. Ensure your git credential helper is configured or use manual auth."
+                # Alternatively, construct https://oauth2:TOKEN@gitlab.com/... but that leaks in 'git remote -v'
+            fi
+        else
+            REPO_URL="git@gitlab.com:${repo_input}.git"
+            PROTOCOL="ssh"
+        fi
+        echo "Auto-detected URL ($PROTOCOL): $REPO_URL"
     fi
 
     # Extract repo name
-    local repo_name=$(basename "$repo_url" .git)
+    local repo_name=$(basename "$REPO_URL" .git)
     local target_dir="$WORKSPACE_DIR/$repo_name"
 
     if [ -d "$target_dir" ]; then
@@ -81,7 +94,7 @@ cmd_init() {
 
     echo "Cloning '$repo_name' as a bare repository into '$target_dir'..."
     mkdir -p "$target_dir"
-    git clone --bare "$repo_url" "$target_dir/.bare"
+    git clone --bare "$REPO_URL" "$target_dir/.bare"
     
     # Create a default 'main' worktree
     echo "Creating default worktree 'main'..."

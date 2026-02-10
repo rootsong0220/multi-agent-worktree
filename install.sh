@@ -59,19 +59,48 @@ fi
 
 echo "Installation complete! Try running 'mawt --help'."
 
-# 5. Configure Workspace
+# 5. Configure Workspace & Preferences
 echo ""
-echo "--- Workspace Configuration ---"
+echo "--- Configuration ---"
+
+# 5.1 Workspace
 read -p "Enter directory to use as workspace (default: $HOME/workspace): " USER_WS
 USER_WS=${USER_WS:-"$HOME/workspace"}
-
-# Expand tilde if present
-USER_WS="${USER_WS/#\~/$HOME}"
-
+USER_WS="${USER_WS/#\~/$HOME}" # Expand tilde
 echo "Using workspace: $USER_WS"
 mkdir -p "$USER_WS"
 
+# 5.2 Git Protocol
+echo ""
+echo "Select default Git protocol for cloning repositories:"
+echo "1) SSH (git@gitlab.com:...)"
+echo "2) HTTPS (https://gitlab.com/...)"
+read -p "Enter choice [1/2] (default: 1): " PROTO_CHOICE
+if [ "$PROTO_CHOICE" == "2" ]; then
+    GIT_PROTOCOL="https"
+else
+    GIT_PROTOCOL="ssh"
+fi
+echo "Selected protocol: $GIT_PROTOCOL"
+
+# 5.3 GitLab Token (Optional)
+echo ""
+echo "Enter GitLab Personal Access Token (Optional)."
+echo "This can be used by agents or for HTTPS authentication helper."
+echo "If strictly using SSH, you can skip this."
+read -s -p "Token (input will be hidden): " GITLAB_TOKEN
+echo ""
+
+# Save Configuration
 CONFIG_FILE="$INSTALL_DIR/config"
-echo "WORKSPACE_DIR=\"$USER_WS\"" > "$CONFIG_FILE"
-echo "Configuration saved to $CONFIG_FILE."
+touch "$CONFIG_FILE"
+chmod 600 "$CONFIG_FILE" # Secure permissions
+
+{
+    echo "WORKSPACE_DIR=\"$USER_WS\""
+    echo "GIT_PROTOCOL=\"$GIT_PROTOCOL\""
+    echo "GITLAB_TOKEN=\"$GITLAB_TOKEN\""
+} > "$CONFIG_FILE"
+
+echo "Configuration saved securely to $CONFIG_FILE (chmod 600)."
 
