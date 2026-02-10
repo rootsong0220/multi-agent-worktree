@@ -329,21 +329,38 @@ function Create-NewWorktree {
     # Execute git worktree add and capture output
     # Use call operator and redirect all streams for better compatibility with older PowerShell
     $command = "git"
-    
+
+    # Define temp file paths within the function for explicit stream capture
+    $tempGitStdoutPath = Join-Path $env:TEMP "mawt_git_stdout_$(Get-Random).txt"
+    $tempGitStderrPath = Join-Path $env:TEMP "mawt_git_stderr_$(Get-Random).txt"
+
     # Clear $Error before invoking to prevent previous errors from affecting $?
     $Error.Clear()
     
-    # Capture ALL output streams (Success, Error, Warning, Verbose, Debug) into $output
-    # This prevents PowerShell from generating NativeCommandError for stderr output if ExitCode is 0
-    $output = & $command $commandArgs *>&1 | Out-String
-    $exitCode = $LastExitCode
+    # Execute git worktree add using Start-Process for better control over output streams
+    try {
+        Write-Host "Executing git command: git $($commandArgs -join ' ')" -ForegroundColor DarkGray
+        $process = Start-Process -FilePath $command -ArgumentList $commandArgs -RedirectStandardOutput $tempGitStdoutPath -RedirectStandardError $tempGitStderrPath -NoNewWindow -PassThru -Wait -ErrorAction Stop
+        $exitCode = $process.ExitCode
+    } catch {
+        Write-Error "Error executing git command: $($_.Exception.Message)" -ForegroundColor Red
+        Pop-Location
+        return $null
+    } finally {
+        # Ensure temp files are cleaned up
+        if (Test-Path $tempGitStdoutPath) { Remove-Item $tempGitStdoutPath -ErrorAction SilentlyContinue }
+        if (Test-Path $tempGitStderrPath) { Remove-Item $tempGitStderrPath -ErrorAction SilentlyContinue }
+    }
+    
+    $stdoutContent = Get-Content $tempGitStdoutPath | Out-String
+    $stderrContent = Get-Content $tempGitStderrPath | Out-String
 
-    # Clear $Error again immediately after invocation to remove any NativeCommandError PowerShell might have generated
-    $Error.Clear()
-
-    # Display git's raw output
-    if (-not [string]::IsNullOrEmpty($output)) {
-        Write-Host "Git command output: $($output.Trim())" -ForegroundColor DarkGray
+    # Display git's raw output for diagnostics
+    if (-not [string]::IsNullOrEmpty($stdoutContent.Trim())) {
+        Write-Host "Git stdout: $($stdoutContent.Trim())" -ForegroundColor DarkGray
+    }
+    if (-not [string]::IsNullOrEmpty($stderrContent.Trim())) {
+        Write-Host "Git stderr: $($stderrContent.Trim())" -ForegroundColor Yellow # Use yellow for stderr
     }
     Write-Host "Git command ExitCode: $exitCode" -ForegroundColor DarkGray # Explicitly show Git's ExitCode
 
@@ -352,7 +369,11 @@ function Create-NewWorktree {
         Pop-Location
         return $null
     } else {
-        Write-Host "Worktree for '$newBranch' created at $targetPath." -ForegroundColor Green
+        # If exit code is 0, but there's stderr output, treat as warning.
+        if (-not [string]::IsNullOrWhiteSpace($stderrContent)) {
+            Write-Warning "Git command produced stderr output, but exited with code 0: $($stderrContent.Trim())"
+        }
+        Write-Host "Worktree for '$worktreeTargetBranchName' created at $targetPath." -ForegroundColor Green
         Pop-Location
         return $targetPath
     }
