@@ -67,24 +67,30 @@ cmd_init() {
             echo "Fetching projects from $GITLAB_BASE_URL..."
             
             # Fetch projects (membership=true gets projects the user is a member of)
-            RESPONSE=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_BASE_URL/api/v4/projects?membership=true&simple=true&per_page=100&order_by=last_activity_at")
+            # Use -w to get http code, write body to temp file
+            RESP_FILE=$(mktemp)
+            HTTP_CODE=$(curl --silent --write-out "%{http_code}" --output "$RESP_FILE" --header "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_BASE_URL/api/v4/projects?membership=true&simple=true&per_page=100&order_by=last_activity_at")
             
-            # Check for curl errors or empty response
-            if [ -z "$RESPONSE" ]; then
-                echo "Error: Failed to fetch projects. Check your Base URL and Network."
+            RESPONSE=$(cat "$RESP_FILE")
+            rm "$RESP_FILE"
+
+            if [ "$HTTP_CODE" -ne 200 ]; then
+                echo "Error: Failed to fetch projects (HTTP $HTTP_CODE)."
+                echo "Response: $RESPONSE"
+                echo "Check your GitLab Token and Base URL."
                 exit 1
             fi
             
             # Check if response is valid JSON array
             if ! echo "$RESPONSE" | jq -e . >/dev/null 2>&1; then
-                echo "Error: Invalid response from GitLab API."
-                echo "Response: $RESPONSE"
+                echo "Error: Invalid JSON response from GitLab API."
+                echo "Response snippet: ${RESPONSE:0:100}..."
                 exit 1
             fi
 
-            # Parse projects using jq: "id | path_with_namespace | ssh_url_to_repo | http_url_to_repo"
-            # We use a temp file for fzf or select
+            # Parse projects using jq
             PROJECTS_FILE=$(mktemp)
+            # Use try-catch or safe navigation in jq to handle unexpected schemas
             echo "$RESPONSE" | jq -r '.[] | "\(.path_with_namespace)\t\(.ssh_url_to_repo)\t\(.http_url_to_repo)"' > "$PROJECTS_FILE"
             
             PROJECT_COUNT=$(wc -l < "$PROJECTS_FILE")
@@ -147,17 +153,10 @@ cmd_init() {
              if [[ "$REPO_URL" == git@* ]]; then PROTOCOL="ssh"; else PROTOCOL="https"; fi
         else
             # Construct URL using Base URL
-            # Remove protocol from Base URL for SSH construction if needed, but usually git@domain:path
-            # Parsing domain from Base URL for SSH is tricky. 
-            # Simplest approach: If manual path given, try to use the Base URL logic.
-            
             if [ "$GIT_PROTOCOL" == "https" ]; then
                 REPO_URL="$GITLAB_BASE_URL/${repo_input}.git"
                 PROTOCOL="https"
             else
-                # For SSH, we need the domain.
-                # e.g., http://gitlab.company.com:8080 -> git@gitlab.company.com:group/project.git
-                # This is complex to guess port/user. 
                 # Fallback: Assume standard git@domain:path structure
                 DOMAIN=$(echo "$GITLAB_BASE_URL" | sed -e 's|[a-z]*://||' -e 's|/.*||' -e 's|:[0-9]*||')
                 REPO_URL="git@${DOMAIN}:${repo_input}.git"
