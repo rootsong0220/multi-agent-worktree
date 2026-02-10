@@ -340,8 +340,15 @@ function Create-NewWorktree {
     # Execute git worktree add using Start-Process for better control over output streams
     try {
         Write-Host "Executing git command: git $($commandArgs -join ' ')" -ForegroundColor DarkGray
-        $process = Start-Process -FilePath $command -ArgumentList $commandArgs -RedirectStandardOutput $tempGitStdoutPath -RedirectStandardError $tempGitStderrPath -NoNewWindow -PassThru -Wait -ErrorAction Stop
+        $process = Start-Process -FilePath $command -ArgumentList $commandArgs -RedirectStandardOutput $tempGitStdoutPath -RedirectStandardError $tempGitStderrPath -PassThru -Wait -ErrorAction Stop # -NoNewWindow removed
         $exitCode = $process.ExitCode
+
+        # Give a small moment for file system to sync, though typically not needed in PowerShell
+        Start-Sleep -Milliseconds 100
+        
+        $stdoutContent = if (Test-Path $tempGitStdoutPath) { Get-Content $tempGitStdoutPath | Out-String } else { "" }
+        $stderrContent = if (Test-Path $tempGitStderrPath) { Get-Content $tempGitStderrPath | Out-String } else { "" }
+
     } catch {
         Write-Error "Error executing git command: $($_.Exception.Message)" -ForegroundColor Red
         Pop-Location
@@ -352,9 +359,6 @@ function Create-NewWorktree {
         if (Test-Path $tempGitStderrPath) { Remove-Item $tempGitStderrPath -ErrorAction SilentlyContinue }
     }
     
-    $stdoutContent = Get-Content $tempGitStdoutPath | Out-String
-    $stderrContent = Get-Content $tempGitStderrPath | Out-String
-
     # Display git's raw output for diagnostics
     if (-not [string]::IsNullOrEmpty($stdoutContent.Trim())) {
         Write-Host "Git stdout: $($stdoutContent.Trim())" -ForegroundColor DarkGray
