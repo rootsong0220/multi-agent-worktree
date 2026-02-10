@@ -305,7 +305,8 @@ function Create-NewWorktree {
     # Execute git worktree add and capture output
     # Use call operator and redirect all streams for better compatibility with older PowerShell
     $command = "git"
-    # Clear $Error before invoking to avoid issues with previous errors
+    
+    # Clear $Error before invoking to prevent previous errors from affecting $?
     $Error.Clear()
     
     # Capture ALL output streams (Success, Error, Warning, Verbose, Debug) into $output
@@ -313,10 +314,14 @@ function Create-NewWorktree {
     $output = & $command $commandArgs *>&1 | Out-String
     $exitCode = $LastExitCode
 
-    # Display git's output
+    # Clear $Error again immediately after invocation to remove any NativeCommandError PowerShell might have generated
+    $Error.Clear()
+
+    # Display git's raw output
     if (-not [string]::IsNullOrEmpty($output)) {
-        Write-Host "Git output: $($output.Trim())" -ForegroundColor DarkGray
+        Write-Host "Git command output: $($output.Trim())" -ForegroundColor DarkGray
     }
+    Write-Host "Git command ExitCode: $exitCode" -ForegroundColor DarkGray # Explicitly show Git's ExitCode
 
     if ($exitCode -ne 0) {
         Write-Error "Error creating worktree (Git Exit Code $exitCode). See above output for details." -ForegroundColor Red
