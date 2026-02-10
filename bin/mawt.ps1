@@ -68,12 +68,9 @@ function Select-Item {
         # Use fzf if available
         $selected = $Items | fzf --prompt="$PromptText> " --height=40% --layout=reverse
         return $selected
-    } elseif ($Host.UI.RawUI.WindowTitle -ne "" -and (Get-Command Out-GridView -ErrorAction SilentlyContinue)) {
-        # Use Out-GridView if in a GUI environment
-        return $Items | Out-GridView -Title $PromptText -OutputMode Single
     } else {
         # Text-based fallback
-        Write-Host $PromptText -ForegroundColor Cyan
+        Write-Host "$PromptText:" -ForegroundColor Cyan
         for ($i = 0; $i -lt $Items.Count; $i++) {
             Write-Host "[$($i+1)] $($Items[$i])"
         }
@@ -230,40 +227,40 @@ function Select-Worktree {
     Write-Host "Fetching updates..." -ForegroundColor Gray
     git fetch --all --prune | Out-Null
     
-    $worktrees = git worktree list
-    $wtList = @()
-    foreach ($line in $worktrees) {
-        # git worktree list format: path    commit-hash [branch]
-        # Use greedy match for path to handle spaces, expecting hash and branch at the end
-        if ($line -match "^(.+)\s+([0-9a-fA-F]+)\s+\[(.*)\]") {
-           if ($line -notmatch ".bare") {
-               $wtList += $line
-           }
+    $worktrees = git worktree list | Where-Object { $_ -notmatch ".bare" } | ForEach-Object { 
+        # Extract path from line like "/path/to/worktree   commit-hash [branch-name]"
+        if ($_ -match "^(.+?)\s+[0-9a-fA-F]+\s+\[(.+)\]$") {
+            return "$($matches[1]) [$($matches[2])]"
+        } else {
+            return $_ # Fallback for unexpected format
         }
     }
     
     $action = "Create New Worktree"
     $selection = $null
     
-    if ($wtList.Count -gt 0) {
-        $menuItems = @("Create New Worktree") + $wtList
+    if ($worktrees.Count -gt 0) {
+        $menuItems = @("Create New Worktree") + $worktrees
         $selection = Select-Item -Items $menuItems -PromptText "Choose Action"
     } else {
         $selection = "Create New Worktree"
     }
     
-    if (-not $selection) { exit 0 }
+    if (-not $selection) { Pop-Location; exit 0 }
     
     if ($selection -eq "Create New Worktree") {
-        return Create-NewWorktree -RepoDir $repoDir
+        $createdWorktreePath = Create-NewWorktree -RepoDir $repoDir
+        Pop-Location
+        return $createdWorktreePath
     } else {
-        # Extract path.
-        if ($selection -match "^(.+)\s+[0-9a-fA-F]+") {
-            return $matches[1]
+        # Extract path from line, which is the first part before '['
+        if ($selection -match "^(.+?)\s+\[") {
+            Pop-Location
+            return $matches[1].Trim()
         }
+        Pop-Location
         return $null
     }
-    Pop-Location
 }
 
 function Create-NewWorktree {
@@ -274,7 +271,7 @@ function Create-NewWorktree {
     $branches = git branch -r | Where-Object { $_ -notmatch "HEAD" } | ForEach-Object { $_.Trim() -replace "^origin/", "" }
     
     $baseBranch = Select-Item -Items $branches -PromptText "Select Base Branch"
-    if (-not $baseBranch) { Write-Error "No base branch selected."; exit 1 }
+    if (-not $baseBranch) { Write-Error "No base branch selected."; Pop-Location; exit 1 }
     
     $newBranch = Read-Host "Enter new branch name (Leave empty to use '$baseBranch')"
     if (-not $newBranch) { $newBranch = $baseBranch }
@@ -286,16 +283,42 @@ function Create-NewWorktree {
     
     Write-Host "Creating worktree '$newBranch'..."
     
-    # Check if branch exists locally
-    if (git show-ref --verify --quiet "refs/heads/$newBranch") {
-        Write-Host "Branch '$newBranch' exists locally."
-        git worktree add "$targetPath" "$newBranch"
+    $commandArgs = @("worktree", "add", "$targetPath")
+    $branchExistsLocally = git show-ref --verify --quiet "refs/heads/$newBranch"
+    $branchUsedByOtherWorktree = (git worktree list | Select-String -Pattern "$newBranch").Count -gt 1
+
+    if ($branchExistsLocally -and $branchUsedByOtherWorktree) {
+        Write-Host "Branch '$newBranch' is already checked out in another worktree." -ForegroundColor Yellow
+        $force = Read-Host "Force create? (y/N)"
+        if ($force -match "^[yY]$") {
+            $commandArgs += "-f"
+            $commandArgs += "$newBranch"
+        } else {
+            Write-Host "Aborted." -ForegroundColor Yellow; Pop-Location; return $null
+        }
+    } elseif ($branchExistsLocally) {
+        $commandArgs += "$newBranch"
     } else {
-        git worktree add "$targetPath" -b "$newBranch" "origin/$baseBranch"
+        $commandArgs += "-b"; $commandArgs += "$newBranch"; $commandArgs += "origin/$baseBranch"
     }
-    
-    Pop-Location
-    return $targetPath
+
+    # Execute git worktree add and capture output
+    $process = Start-Process -FilePath git -ArgumentList $commandArgs -PassThru -NoNewWindow -RedirectStandardOutput ([System.IO.Path]::GetTempFileName()) -RedirectStandardError ([System.IO.Path]::GetTempFileName())
+    $process.WaitForExit()
+    $stdout = Get-Content $process.StandardOutput.ToString()
+    $stderr = Get-Content $process.StandardError.ToString()
+
+    Remove-Item $process.StandardOutput.ToString(), $process.StandardError.ToString()
+
+    if ($process.ExitCode -ne 0) {
+        Write-Error "Error creating worktree: $($stderr | Out-String)" -ForegroundColor Red
+        Pop-Location
+        return $null
+    } else {
+        Write-Host "Worktree for '$newBranch' created at $targetPath." -ForegroundColor Green
+        Pop-Location
+        return $targetPath
+    }
 }
 
 # 4. Agent Launch
