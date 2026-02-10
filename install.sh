@@ -14,32 +14,122 @@ else
     echo "Installing Multi-Agent Worktree Manager (MAWT)..."
 fi
 
-# 1. Check Dependencies
-echo "Checking dependencies..."
-deps=("git" "curl" "unzip" "tar" "jq" "fzf") # Added fzf as it's used in bin/mawt
+# Detect OS
+OS_TYPE="$(uname -s)"
+case "$OS_TYPE" in
+    Linux*)     OS_NAME="linux";;
+    Darwin*)    OS_NAME="macos";;
+    CYGWIN*)    OS_NAME="cygwin";;
+    MINGW*)     OS_NAME="mingw";;
+    *)          OS_NAME="unknown";;
+esac
+
+echo "Detected OS: $OS_NAME"
+
+# Function to install system packages
+install_sys_pkg() {
+    local pkg="$1"
+    
+    # Check if user wants to install
+    echo "Required package '$pkg' is missing."
+    read -p "Do you want to attempt installation? (y/N) " confirm < /dev/tty
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        echo "Skipping installation of '$pkg'. MAWT might not function correctly."
+        return 1
+    fi
+
+    if [ "$OS_NAME" = "macos" ]; then
+        if command -v brew &> /dev/null; then
+            brew install "$pkg"
+        else
+            echo "Error: Homebrew not found. Please install '$pkg' manually."
+            return 1
+        fi
+    elif [ "$OS_NAME" = "linux" ]; then
+        if [ -f /etc/debian_version ]; then
+            sudo apt-get update && sudo apt-get install -y "$pkg"
+        elif [ -f /etc/redhat-release ]; then
+            sudo dnf install -y "$pkg" || sudo yum install -y "$pkg"
+        elif [ -f /etc/arch-release ]; then
+            sudo pacman -S --noconfirm "$pkg"
+        else
+            echo "Unknown Linux distribution. Please install '$pkg' manually."
+            return 1
+        fi
+    else
+        echo "Cannot automatically install on $OS_NAME. Please install '$pkg' manually."
+        return 1
+    fi
+}
+
+# 1. Check System Dependencies
+echo "Checking system dependencies..."
+deps=("git" "curl" "unzip" "tar" "jq" "fzf")
 
 for dep in "${deps[@]}"; do
     if ! command -v "$dep" &> /dev/null; then
-        echo "Error: '$dep' is required but not installed."
-        
-        OS="$(uname -s)"
-        if [ "$OS" = "Darwin" ]; then
-            echo "Try running: brew install $dep"
-        elif [ -f /etc/debian_version ]; then
-            echo "Try running: sudo apt-get install $dep"
-        elif [ -f /etc/redhat-release ]; then
-            echo "Try running: sudo dnf install $dep"
-        fi
-        
-        exit 1
+        install_sys_pkg "$dep" || {
+            echo "Error: Failed to satisfy dependency '$dep'. Exiting."
+            exit 1
+        }
+    else
+        echo " - $dep: Found"
     fi
 done
 
-# 2. Create Installation Directory
+# Function to check and install AI CLI tools
+check_ai_cli() {
+    local tool="$1"
+    local install_cmd="$2"
+    local install_guide="$3"
+
+    if ! command -v "$tool" &> /dev/null; then
+        echo "AI CLI '$tool' is not installed."
+        read -p "Install '$tool'? (y/N) " confirm < /dev/tty
+        if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+            echo "Attempting to install '$tool'..."
+            if eval "$install_cmd"; then
+                echo "'$tool' installed successfully."
+            else
+                echo "Installation failed."
+                echo "Please install manually: $install_guide"
+            fi
+        else
+            echo "Skipping '$tool'. You can install it later."
+            echo "Guide: $install_guide"
+        fi
+    else
+        echo " - AI CLI '$tool': Found"
+    fi
+}
+
+# 2. Check AI CLI Tools
+echo ""
+echo "Checking AI Agent CLIs..."
+
+# Gemini CLI (Assuming Google's gemini-cli via npm or similar)
+# Note: Official package name might vary. Using generic npm command as example.
+check_ai_cli "gemini" \
+    "npm install -g @google/gemini-cli" \
+    "https://www.npmjs.com/package/@google/gemini-cli"
+
+# Claude Code (Anthropic)
+check_ai_cli "claude" \
+    "npm install -g @anthropic-ai/claude-code" \
+    "https://docs.anthropic.com/claude/docs/claude-code"
+
+# Codex (OpenAI - Assuming generic CLI or copilot)
+# Since there is no single 'codex' CLI, we guide users or install generic openai pkg
+check_ai_cli "codex" \
+    "pip install openai" \
+    "https://pypi.org/project/openai/ (Python Library)"
+
+# 3. Create Installation Directory
 mkdir -p "$BIN_DIR"
 
-# 3. Download/Update MAWT via Git Clone (More Robust than curl raw)
-echo "Fetching latest version..."
+# 4. Download/Update MAWT via Git Clone
+echo ""
+echo "Fetching latest version of MAWT..."
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
@@ -52,7 +142,6 @@ if git clone --depth 1 "$REPO_URL" "$TEMP_DIR" >/dev/null 2>&1; then
 else
     echo "Error: Failed to clone repository."
     echo "Trying fallback to curl..."
-    # Fallback to curl if git fails (e.g. firewall blocking git protocol but not https)
     MAWT_SCRIPT_URL="https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/bin/mawt"
     if ! curl -fsSL -4 --retry 3 --retry-delay 2 "$MAWT_SCRIPT_URL" -o "$BIN_DIR/mawt"; then
         echo "Error: Failed to download mawt CLI."
@@ -61,7 +150,7 @@ else
     chmod +x "$BIN_DIR/mawt"
 fi
 
-# 4. Add to PATH
+# 5. Add to PATH
 SHELL_CONFIG=""
 case "$SHELL" in
     */zsh) SHELL_CONFIG="$HOME/.zshrc" ;;
@@ -81,7 +170,7 @@ if [ -n "$SHELL_CONFIG" ]; then
     fi
 fi
 
-# 5. Configure Workspace & Preferences
+# 6. Configure Workspace & Preferences
 echo ""
 echo "--- Configuration ---"
 
@@ -90,10 +179,9 @@ if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 fi
 
-# Flag to determine if we need to save/update config
 UPDATE_CONFIG=false
 
-# 5.1 Workspace
+# 6.1 Workspace
 if [ -z "$WORKSPACE_DIR" ]; then
     read -p "Enter directory to use as workspace (default: $HOME/workspace): " USER_WS < /dev/tty
     USER_WS=${USER_WS:-"$HOME/workspace"}
@@ -106,7 +194,7 @@ else
     echo "Using existing workspace: $WORKSPACE_DIR"
 fi
 
-# 5.2 Git Protocol
+# 6.2 Git Protocol
 if [ -z "$GIT_PROTOCOL" ]; then
     echo ""
     echo "Select default Git protocol for cloning repositories:"
@@ -122,7 +210,7 @@ if [ -z "$GIT_PROTOCOL" ]; then
     UPDATE_CONFIG=true
 fi
 
-# 5.3 GitLab Base URL (For Private GitLab)
+# 6.3 GitLab Base URL
 if [ -z "$GITLAB_BASE_URL" ]; then
     echo ""
     echo "Enter GitLab Base URL (e.g., http://gitlab.company.com)."
@@ -133,12 +221,11 @@ if [ -z "$GITLAB_BASE_URL" ]; then
     else
         GITLAB_BASE_URL="$INPUT_BASE_URL"
     fi
-    # Remove trailing slash
     GITLAB_BASE_URL=${GITLAB_BASE_URL%/}
     UPDATE_CONFIG=true
 fi
 
-# 5.4 GitLab Token (Optional but recommended for API access)
+# 6.4 GitLab Token
 if [ -z "$GITLAB_TOKEN" ]; then
     echo ""
     echo "Enter GitLab Personal Access Token."
@@ -150,19 +237,16 @@ if [ -z "$GITLAB_TOKEN" ]; then
     fi
 fi
 
-# Save Configuration only if needed or forced
 if [ "$UPDATE_CONFIG" = true ]; then
     touch "$CONFIG_FILE"
-    chmod 600 "$CONFIG_FILE" # Secure permissions
-
+    chmod 600 "$CONFIG_FILE"
     {
         echo "WORKSPACE_DIR=\"$WORKSPACE_DIR\""
         echo "GIT_PROTOCOL=\"$GIT_PROTOCOL\""
         echo "GITLAB_BASE_URL=\"$GITLAB_BASE_URL\""
         echo "GITLAB_TOKEN=\"$GITLAB_TOKEN\""
     } > "$CONFIG_FILE"
-
-    echo "Configuration updated securely in $CONFIG_FILE (chmod 600)."
+    echo "Configuration updated."
 else
     echo "Configuration is up to date."
 fi
