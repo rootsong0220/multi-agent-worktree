@@ -7,15 +7,15 @@ function Check-Deps {
     $deps = @("git", "node", "npm") # Added node and npm
     foreach ($dep in $deps) {
         if (-not (Get-Command $dep -ErrorAction SilentlyContinue)) {
-            Write-Error "오류: '$dep'가 필요하지만 설치되어 있지 않습니다." -ForegroundColor Red
-            Write-Host "'$dep'를 설치하려면 다음 단계를 따르세요:" -ForegroundColor Yellow
+            Write-Error "Error: '$dep' is required but not installed." -ForegroundColor Red
+            Write-Host "To install '$dep', follow these steps:" -ForegroundColor Yellow
             if ($dep -eq "node" -or $dep -eq "npm") {
-                Write-Host "  1. Node.js 공식 웹사이트 (https://nodejs.org)에서 LTS 버전을 다운로드하여 설치합니다."
-                Write-Host "  2. 또는 Winget (Windows Package Manager)을 사용하는 경우 PowerShell에서 다음을 실행합니다:"
+                Write-Host "  1. Download and install the LTS version from the official Node.js website (https://nodejs.org)."
+                Write-Host "  2. Alternatively, if you use Winget (Windows Package Manager), run the following in PowerShell:"
                 Write-Host "     winget install OpenJS.NodeJS.LTS"
-                Write-Host "  3. 설치 후 새 PowerShell 창을 열어 Path가 업데이트되었는지 확인합니다."
+                Write-Host "  3. After installation, open a new PowerShell window to confirm Path is updated."
             } else {
-                Write-Host "  해당 패키지 관리자를 사용하여 '$dep'를 수동으로 설치하십시오."
+                Write-Host "  Please manually install '$dep' using your preferred package manager."
             }
             exit 1
         }
@@ -86,7 +86,7 @@ if (-not $mawtScriptFoundLocally) {
         try {
             Write-Host "Attempting download (Attempt $($i + 1)/$maxRetries)..." -ForegroundColor DarkGray
             Invoke-WebRequest -Uri $ScriptUrl -OutFile $MawtScriptPath -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
-            $downloadSuccess = $true
+            $downloadSuccess = true
             break # Exit loop if successful
         } catch {
             Write-Host "Download failed: $($_.Exception.Message)" -ForegroundColor Yellow
@@ -130,29 +130,31 @@ function Check-AiCli {
         Write-Host "AI CLI '$ToolCommand' is not installed." -ForegroundColor Yellow
         
         if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-            Write-Host "npm이 없습니다. '$ToolCommand'를 설치할 수 없습니다." -ForegroundColor Yellow
+            Write-Host "npm is not found. Cannot install '$ToolCommand'." -ForegroundColor Yellow
             return
         }
 
-        $confirm = Read-Host "'$ToolCommand'를 npm으로 설치하시겠습니까? (y/N)"
+        $confirm = Read-Host "Do you want to install '$ToolCommand' with npm? (y/N)"
         if ($confirm -match "^[yY]$") {
-            Write-Host "'$NpmPackage'를 설치 중..." -ForegroundColor Cyan
+            Write-Host "Installing '$NpmPackage'..." -ForegroundColor Cyan
             try {
                 npm install -g $NpmPackage | Out-Null # Suppress npm output
-                Write-Host "'$ToolCommand'가 성공적으로 설치되었습니다." -ForegroundColor Green
+                Write-Host "'$ToolCommand' installed successfully." -ForegroundColor Green
             } catch {
-                Write-Error "'$ToolCommand' 설치 실패: $($_.Exception.Message). 직접 실행해주세요: npm install -g $NpmPackage" -ForegroundColor Red
+                Write-Error "'$ToolCommand' installation failed: $($_.Exception.Message). Please run manually: npm install -g $NpmPackage" -ForegroundColor Red
             }
-        } else {
-            Write-Host "'$ToolCommand' 설치를 건너뜝니다. 나중에 직접 설치할 수 있습니다: npm install -g $NpmPackage" -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "Skipping '$ToolCommand' installation. You can install it manually later: npm install -g $NpmPackage" -ForegroundColor Yellow
         }
     } else {
-        Write-Host "- AI CLI '$ToolCommand': 설치됨" -ForegroundColor Green
+        Write-Host "- AI CLI '$ToolCommand': Installed" -ForegroundColor Green
     }
-}
+} # Closing brace for function Check-AiCli
+
 
 # 2. Check AI CLI Tools
-Write-Host "`n--- AI 에이전트 CLI 도구 확인 중 ---" -ForegroundColor Cyan
+Write-Host "`n--- Checking AI Agent CLI Tools ---" -ForegroundColor Cyan
 
 # Gemini CLI
 Check-AiCli -ToolCommand "gemini" -NpmPackage "@google/gemini-cli"
@@ -167,7 +169,8 @@ Check-AiCli -ToolCommand "codex" -NpmPackage "@openai/codex"
 $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($CurrentPath -notlike "*$BinDir*") {
     Write-Host "Adding $BinDir to User PATH..." -ForegroundColor Cyan
-    [Environment]::SetEnvironmentVariable("Path", "$CurrentPath;$BinDir", "User")
+    $pathValue = "$CurrentPath;$BinDir"
+    [Environment]::SetEnvironmentVariable("Path", $pathValue, "User")
     Write-Host "Path updated. You may need to restart your terminal." -ForegroundColor Yellow
 } else {
     Write-Host "Path already configured." -ForegroundColor DarkGray
