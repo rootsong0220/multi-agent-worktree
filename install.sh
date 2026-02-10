@@ -64,42 +64,60 @@ install_sys_pkg() {
 
 # 1. Check System Dependencies
 echo "Checking system dependencies..."
-deps=("git" "curl" "unzip" "tar" "jq" "fzf")
+# Added 'npm' to dependencies list as AI CLIs are npm packages
+deps=("git" "curl" "unzip" "tar" "jq" "fzf" "npm")
 
 for dep in "${deps[@]}"; do
     if ! command -v "$dep" &> /dev/null; then
-        install_sys_pkg "$dep" || {
-            echo "Error: Failed to satisfy dependency '$dep'. Exiting."
-            exit 1
-        }
+        # Special handling for npm -> usually installed via nodejs
+        if [ "$dep" == "npm" ]; then
+             echo "npm is required for installing AI CLIs."
+             install_sys_pkg "nodejs" || install_sys_pkg "npm" || {
+                echo "Warning: failed to install npm/nodejs. AI CLI auto-installation will be skipped."
+             }
+        else
+             install_sys_pkg "$dep" || {
+                 echo "Error: Failed to satisfy dependency '$dep'. Exiting."
+                 exit 1
+             }
+        fi
     else
         echo " - $dep: Found"
     fi
 done
 
-# Function to check and install AI CLI tools
+# Function to check and install AI CLI tools via NPM
 check_ai_cli() {
-    local tool="$1"
-    local install_cmd="$2"
-    local install_guide="$3"
+    local tool_cmd="$1"
+    local npm_pkg="$2"
 
-    if ! command -v "$tool" &> /dev/null; then
-        echo "AI CLI '$tool' is not installed."
-        read -p "Install '$tool'? (y/N) " confirm < /dev/tty
+    if ! command -v "$tool_cmd" &> /dev/null; then
+        echo "AI CLI '$tool_cmd' is not installed."
+        
+        if ! command -v npm &> /dev/null; then
+            echo "npm not found. Cannot install '$tool_cmd'."
+            return
+        fi
+
+        read -p "Install '$tool_cmd' via npm? (y/N) " confirm < /dev/tty
         if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-            echo "Attempting to install '$tool'..."
-            if eval "$install_cmd"; then
-                echo "'$tool' installed successfully."
+            echo "Installing '$npm_pkg'..."
+            # Try installing globally without sudo first, then with sudo if permission denied
+            if npm install -g "$npm_pkg"; then
+                echo "'$tool_cmd' installed successfully."
             else
-                echo "Installation failed."
-                echo "Please install manually: $install_guide"
+                echo "Permission denied or failed. Trying with sudo..."
+                if sudo npm install -g "$npm_pkg"; then
+                     echo "'$tool_cmd' installed successfully with sudo."
+                else
+                     echo "Failed to install '$tool_cmd'. Please run: npm install -g $npm_pkg"
+                fi
             fi
         else
-            echo "Skipping '$tool'. You can install it later."
-            echo "Guide: $install_guide"
+            echo "Skipping '$tool_cmd'. You can install it later: npm install -g $npm_pkg"
         fi
     else
-        echo " - AI CLI '$tool': Found"
+        echo " - AI CLI '$tool_cmd': Found"
     fi
 }
 
@@ -107,22 +125,15 @@ check_ai_cli() {
 echo ""
 echo "Checking AI Agent CLIs..."
 
-# Gemini CLI (Assuming Google's gemini-cli via npm or similar)
-# Note: Official package name might vary. Using generic npm command as example.
-check_ai_cli "gemini" \
-    "npm install -g @google/gemini-cli" \
-    "https://www.npmjs.com/package/@google/gemini-cli"
+# Gemini CLI
+check_ai_cli "gemini" "@google/gemini-cli"
 
-# Claude Code (Anthropic)
-check_ai_cli "claude" \
-    "npm install -g @anthropic-ai/claude-code" \
-    "https://docs.anthropic.com/claude/docs/claude-code"
+# Claude Code
+check_ai_cli "claude" "@anthropic-ai/claude-code"
 
-# Codex (OpenAI - Assuming generic CLI or copilot)
-# Since there is no single 'codex' CLI, we guide users or install generic openai pkg
-check_ai_cli "codex" \
-    "pip install openai" \
-    "https://pypi.org/project/openai/ (Python Library)"
+# Codex CLI
+check_ai_cli "codex" "@openai/codex"
+
 
 # 3. Create Installation Directory
 mkdir -p "$BIN_DIR"
