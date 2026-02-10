@@ -306,17 +306,23 @@ function Create-NewWorktree {
     # Use call operator and redirect all streams for better compatibility with older PowerShell
     $command = "git"
     # Capture output and suppress PowerShell's default error handling for native commands
-    $output = & $command $commandArgs 2>&1 | Out-String # Redirect all output (stdout and stderr) to $output
+    # Output from Git commands on stderr (e.g., 'Preparing worktree') can be treated as NativeCommandError by PowerShell
+    # We'll rely on $LastExitCode for actual command success/failure.
+    $output = & $command $commandArgs 2>&1 | Out-String
     $exitCode = $LastExitCode
 
+    # Display git's output, potentially including informational messages from stderr
+    if (-not [string]::IsNullOrEmpty($output)) {
+        Write-Host "Git output:" -ForegroundColor DarkGray
+        $output | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+    }
+
     if ($exitCode -ne 0) {
-        Write-Error "Error creating worktree (Exit Code $exitCode): $($output)" -ForegroundColor Red # Removed Out-String from $output here
+        Write-Error "Error creating worktree (Git Exit Code $exitCode). See above output for details." -ForegroundColor Red
         Pop-Location
         return $null
     } else {
         Write-Host "Worktree for '$newBranch' created at $targetPath." -ForegroundColor Green
-        # Optional: Verify worktree creation by listing worktrees
-        # git worktree list | Select-String -Pattern $targetPath | Out-Null # For debugging
         Pop-Location
         return $targetPath
     }
