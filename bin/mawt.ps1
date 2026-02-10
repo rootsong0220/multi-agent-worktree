@@ -14,7 +14,8 @@ $GIT_PROTOCOL = "ssh"
 # Load Config
 if (Test-Path $CONFIG_FILE) {
     Get-Content $CONFIG_FILE | ForEach-Object {
-        if ($_ -match '^(\w+)="(.*)"$') {
+        # Allow spaces around '=', and optional quotes for value
+        if ($_ -match '^\s*(\w+)\s*=\s*"?([^"]*)"?\s*$') {
             Set-Variable -Name $matches[1] -Value $matches[2] -Scope Global
         }
     }
