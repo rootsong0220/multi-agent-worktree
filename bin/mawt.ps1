@@ -273,33 +273,57 @@ function Create-NewWorktree {
     $baseBranch = Select-Item -Items $branches -PromptText "Select Base Branch"
     if (-not $baseBranch) { Write-Error "No base branch selected."; Pop-Location; exit 1 }
     
-    $newBranch = Read-Host "Enter new branch name (Leave empty to use '$baseBranch')"
-    if (-not $newBranch) { $newBranch = $baseBranch }
+    $inputNewBranchName = Read-Host "Enter new branch name (Leave empty to attach to existing '$baseBranch')"
     
-    $targetPath = Join-Path $RepoDir $newBranch
+    $isNewBranchCreation = ![string]::IsNullOrWhiteSpace($inputNewBranchName)
+    $worktreeTargetBranchName = if ($isNewBranchCreation) { $inputNewBranchName } else { $baseBranch }
+
+    # Construct target path for the worktree directory
+    $worktreeDirName = $worktreeTargetBranchName
+    $targetPath = Join-Path $RepoDir $worktreeDirName
     if (Test-Path $targetPath) {
         $targetPath = "${targetPath}_$(Get-Date -Format 'yyyyMMddHHmmss')"
     }
     
-    Write-Host "Creating worktree '$newBranch'..."
+    Write-Host "Preparing to create worktree for branch '$worktreeTargetBranchName' at '$targetPath'..." -ForegroundColor Cyan
     
     $commandArgs = @("worktree", "add", "$targetPath")
-    $branchExistsLocally = git show-ref --verify --quiet "refs/heads/$newBranch"
-    $branchUsedByOtherWorktree = (git worktree list | Select-String -Pattern "$newBranch").Count -gt 1
+    
+    # --- Logic for handling existing branches / force attaching ---
+    $branchExistsLocally = git show-ref --verify --quiet "refs/heads/$worktreeTargetBranchName"
+    $branchIsUsedByOtherWorktree = (git worktree list | Select-String -Pattern "$worktreeTargetBranchName").Count -gt 1
 
-    if ($branchExistsLocally -and $branchUsedByOtherWorktree) {
-        Write-Host "Branch '$newBranch' is already checked out in another worktree." -ForegroundColor Yellow
-        $force = Read-Host "Force create? (y/N)"
-        if ($force -match "^[yY]$") {
-            $commandArgs += "-f"
-            $commandArgs += "$newBranch"
+    if ($isNewBranchCreation) {
+        # User explicitly asked to create a NEW branch with $inputNewBranchName
+        if ($branchExistsLocally) {
+            # If the user asked to create a *new* branch but a local branch with that name already exists.
+            Write-Host "A local branch named '$worktreeTargetBranchName' already exists. Attempting to attach to it." -ForegroundColor Yellow
+            $commandArgs += $worktreeTargetBranchName # Attach to the existing local branch
+            if ($branchIsUsedByOtherWorktree) {
+                Write-Host "Branch '$worktreeTargetBranchName' is also currently checked out in another worktree." -ForegroundColor Yellow
+                $force = Read-Host "Force attach? This may detach another worktree. (y/N)"
+                if ($force -match "^[yY]$") {
+                    $commandArgs += "-f"
+                } else {
+                    Write-Host "Aborted." -ForegroundColor Yellow; Pop-Location; return $null
+                }
+            }
         } else {
-            Write-Host "Aborted." -ForegroundColor Yellow; Pop-Location; return $null
+            # Create a genuinely new local branch
+            $commandArgs += "-b"; $commandArgs += "$worktreeTargetBranchName"; $commandArgs += "origin/$baseBranch"
         }
-    } elseif ($branchExistsLocally) {
-        $commandArgs += "$newBranch"
     } else {
-        $commandArgs += "-b"; $commandArgs += "$newBranch"; $commandArgs += "origin/$baseBranch"
+        # User left branch name empty, meaning they want to attach to the existing $baseBranch
+        $commandArgs += "$worktreeTargetBranchName" # This is $baseBranch
+        if ($branchIsUsedByOtherWorktree) {
+            Write-Host "Branch '$worktreeTargetBranchName' is already checked out in another worktree." -ForegroundColor Yellow
+            $force = Read-Host "Force attach? This may detach another worktree. (y/N)"
+            if ($force -match "^[yY]$") {
+                $commandArgs += "-f"
+            } else {
+                Write-Host "Aborted." -ForegroundColor Yellow; Pop-Location; return $null
+            }
+        }
     }
 
     # Execute git worktree add and capture output
