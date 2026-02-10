@@ -350,7 +350,7 @@ switch ($command) {
         Ensure-Cloned -RepoInfo $repo
     }
     "list" {
-        Write-Host "Managed Repositories in $WORKSPACE_DIR:"
+        Write-Host "Managed Repositories in ${WORKSPACE_DIR}:"
         Get-ChildItem $WORKSPACE_DIR | ForEach-Object {
             if (Test-Path (Join-Path $_.FullName ".bare")) {
                 Write-Host "- $($_.Name)" -ForegroundColor Cyan
