@@ -22,20 +22,16 @@ Write-Host "Installing Multi-Agent Worktree Manager (MAWT) from branch '$Install
 
 # 1. Create Directories
 if (-not (Test-Path $BinDir)) {
+    Write-Host "Creating installation directory: $BinDir" -ForegroundColor DarkGray
     New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 }
 
 # 2. Download MAWT Script
 $MawtScriptPath = "$BinDir\mawt.ps1"
-# For local development testing, we might want to copy from current dir if it exists
-if (Test-Path ".\bin\mawt.ps1") {
-    Copy-Item ".\bin\mawt.ps1" -Destination $MawtScriptPath -Force
-} else {
-    # Production: Download from GitHub
-    $ScriptUrl = "https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/$InstallBranch/bin/mawt.ps1"
-    Write-Host "Downloading mawt.ps1 from branch '$InstallBranch' on GitHub..." -ForegroundColor Cyan
-    Invoke-WebRequest -Uri $ScriptUrl -OutFile $MawtScriptPath -UseBasicParsing
-}
+$ScriptUrl = "https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/$InstallBranch/bin/mawt.ps1"
+Write-Host "Downloading mawt.ps1 from branch '$InstallBranch' on GitHub to $MawtScriptPath..." -ForegroundColor Cyan
+Invoke-WebRequest -Uri $ScriptUrl -OutFile $MawtScriptPath -UseBasicParsing
+Write-Host "MAWT script download complete." -ForegroundColor Green
 
 # Create a wrapper batch file for easy execution in cmd/powershell as 'mawt'
 $BatchContent = @"
@@ -43,8 +39,9 @@ $BatchContent = @"
 powershell -ExecutionPolicy Bypass -File "%~dp0mawt.ps1" %*
 "@
 Set-Content -Path "$BinDir\mawt.cmd" -Value $BatchContent
+Write-Host "'mawt.cmd' wrapper created at $BinDir" -ForegroundColor DarkGray
 
-Write-Host "Installed to $BinDir"
+Write-Host "Installed to $BinDir" -ForegroundColor Green
 
 # 3. Add to PATH
 $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
