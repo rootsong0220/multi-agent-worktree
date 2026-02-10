@@ -13,13 +13,28 @@ $GIT_PROTOCOL = "ssh"
 
 # Load Config
 if (Test-Path $CONFIG_FILE) {
+    Write-Host "DEBUG: Loading config from $CONFIG_FILE" -ForegroundColor DarkGray
     Get-Content $CONFIG_FILE | ForEach-Object {
+        $line = $_.Trim()
+        if ([string]::IsNullOrWhiteSpace($line)) { return }
+        
+        Write-Host "DEBUG: Read line: '$line'" -ForegroundColor DarkGray
+        
         # Allow spaces around '=', and optional quotes for value
-        if ($_ -match '^\s*(\w+)\s*=\s*"?([^"]*)"?\s*$') {
-            Set-Variable -Name $matches[1] -Value $matches[2] -Scope Global
+        if ($line -match '^\s*(\w+)\s*=\s*"?([^"]*)"?\s*$') {
+            $key = $matches[1]
+            $val = $matches[2]
+            Write-Host "DEBUG: Set $key = *** (hidden)" -ForegroundColor DarkGray
+            Set-Variable -Name $key -Value $val -Scope Global
+        } else {
+            Write-Host "DEBUG: Line did not match regex" -ForegroundColor Yellow
         }
     }
+} else {
+    Write-Host "DEBUG: Config file not found at $CONFIG_FILE" -ForegroundColor Red
 }
+
+Write-Host "DEBUG: Final GITLAB_TOKEN status: $(if ($GITLAB_TOKEN) { 'Set' } else { 'NULL' })" -ForegroundColor DarkGray
 
 # Ensure trailing slash removal
 if ($GITLAB_BASE_URL.EndsWith("/")) {
