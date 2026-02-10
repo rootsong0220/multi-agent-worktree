@@ -42,10 +42,16 @@ source ~/.zshrc
 또는 터미널을 재시작하면 됩니다.
 
 ### Windows (PowerShell)
-PowerShell 터미널에서 아래 명령어를 실행하세요:
+PowerShell 터미널을 열고 아래 명령어를 실행하세요:
 
 ```powershell
 irm https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.ps1 | iex
+```
+
+만약 **Command Prompt (cmd)**를 사용 중이라면 아래 명령어를 복사해 실행하세요:
+
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.ps1 | iex"
 ```
 
 설치 후 터미널을 재시작하면 `mawt` 명령어를 사용할 수 있습니다.
