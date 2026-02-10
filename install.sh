@@ -84,7 +84,7 @@ UPDATE_CONFIG=false
 
 # 5.1 Workspace
 if [ -z "$WORKSPACE_DIR" ]; then
-    read -p "Enter directory to use as workspace (default: $HOME/workspace): " USER_WS
+    read -p "Enter directory to use as workspace (default: $HOME/workspace): " USER_WS < /dev/tty
     USER_WS=${USER_WS:-"$HOME/workspace"}
     USER_WS="${USER_WS/#\~/$HOME}" # Expand tilde
     echo "Using workspace: $USER_WS"
@@ -101,7 +101,7 @@ if [ -z "$GIT_PROTOCOL" ]; then
     echo "Select default Git protocol for cloning repositories:"
     echo "1) SSH (git@gitlab.com:...)"
     echo "2) HTTPS (https://gitlab.com/...)"
-    read -p "Enter choice [1/2] (default: 1): " PROTO_CHOICE
+    read -p "Enter choice [1/2] (default: 1): " PROTO_CHOICE < /dev/tty
     if [ "$PROTO_CHOICE" == "2" ]; then
         GIT_PROTOCOL="https"
     else
@@ -116,7 +116,7 @@ if [ -z "$GITLAB_BASE_URL" ]; then
     echo ""
     echo "Enter GitLab Base URL (e.g., http://gitlab.company.com)."
     echo "Press Enter to use default (https://gitlab.com)."
-    read -p "Base URL: " INPUT_BASE_URL
+    read -p "Base URL: " INPUT_BASE_URL < /dev/tty
     if [ -z "$INPUT_BASE_URL" ]; then
         GITLAB_BASE_URL="https://gitlab.com"
     else
@@ -132,7 +132,7 @@ if [ -z "$GITLAB_TOKEN" ]; then
     echo ""
     echo "Enter GitLab Personal Access Token."
     echo "Required for fetching repository lists from Private GitLab."
-    read -s -p "Token (input will be hidden): " GITLAB_TOKEN
+    read -s -p "Token (input will be hidden): " GITLAB_TOKEN < /dev/tty
     echo ""
     if [ -n "$GITLAB_TOKEN" ]; then
         UPDATE_CONFIG=true
