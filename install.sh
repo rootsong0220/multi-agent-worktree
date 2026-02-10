@@ -16,10 +16,21 @@ fi
 
 # 1. Check Dependencies
 echo "Checking dependencies..."
-deps=("git" "curl" "unzip" "tar" "jq")
+deps=("git" "curl" "unzip" "tar" "jq" "fzf") # Added fzf as it's used in bin/mawt
+
 for dep in "${deps[@]}"; do
     if ! command -v "$dep" &> /dev/null; then
-        echo "Error: '$dep' is not installed. Please install it and try again."
+        echo "Error: '$dep' is required but not installed."
+        
+        OS="$(uname -s)"
+        if [ "$OS" = "Darwin" ]; then
+            echo "Try running: brew install $dep"
+        elif [ -f /etc/debian_version ]; then
+            echo "Try running: sudo apt-get install $dep"
+        elif [ -f /etc/redhat-release ]; then
+            echo "Try running: sudo dnf install $dep"
+        fi
+        
         exit 1
     fi
 done

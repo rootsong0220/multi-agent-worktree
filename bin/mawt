@@ -31,7 +31,11 @@ check_deps() {
 
 # Helper: Detect WSL
 is_wsl() {
-    grep -q Microsoft /proc/version
+    if [ -f /proc/version ]; then
+        grep -q Microsoft /proc/version
+    else
+        return 1
+    fi
 }
 
 # ------------------------------------------------------------------
