@@ -32,11 +32,16 @@ mkdir -p "$BIN_DIR"
 echo "Downloading mawt CLI..."
 # For now, we are simulating the download from the repo we are building.
 # In a real scenario, we would download from the raw URL of the main branch.
-# Since we are developing locally, we will just copy if the file exists locally, otherwise curl.
+# Since we are developing locally, we will just copy if the file exists locally, otherwise curl with retry.
 if [ -f "bin/mawt" ]; then
     cp bin/mawt "$BIN_DIR/mawt"
 else
-    curl -fsSL "$MAWT_SCRIPT_URL" -o "$BIN_DIR/mawt"
+    # Retry logic: 3 attempts with 2-second delay
+    if ! curl -fsSL --retry 3 --retry-delay 2 "$MAWT_SCRIPT_URL" -o "$BIN_DIR/mawt"; then
+        echo "Error: Failed to download mawt CLI from GitHub."
+        echo "Please check your internet connection or try again later."
+        exit 1
+    fi
 fi
 
 chmod +x "$BIN_DIR/mawt"
