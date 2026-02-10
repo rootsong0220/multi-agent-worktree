@@ -36,14 +36,55 @@ $MawtScriptPath = "$BinDir\mawt.ps1"
 $ScriptUrl = "https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/$InstallBranch/bin/mawt.ps1"
 Write-Host "Downloading mawt.ps1 from branch '$InstallBranch' on GitHub..." -ForegroundColor Cyan
 Write-Host "Targeting: $MawtScriptPath" -ForegroundColor DarkGray
-Invoke-WebRequest -Uri $ScriptUrl -OutFile $MawtScriptPath -UseBasicParsing
+
+$mawtScriptFoundLocally = $false
+$currentScriptDir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
+
+# Check if install.ps1 is run from a cloned git repository's root
+# This assumes install.ps1 is in the root of the repo (or a parent directory of bin/mawt.ps1)
+if (Test-Path (Join-Path $currentScriptDir ".git")) {
+    $localMawtPath = Join-Path $currentScriptDir "bin\mawt.ps1"
+    if (Test-Path $localMawtPath) {
+        Write-Host "Found local mawt.ps1 at $localMawtPath. Copying instead of downloading." -ForegroundColor DarkGreen
+        Copy-Item $localMawtPath -Destination $MawtScriptPath -Force
+        $mawtScriptFoundLocally = $true
+    } else {
+        Write-Host "Running from Git repo, but local bin\mawt.ps1 not found. Proceeding with remote download." -ForegroundColor Yellow
+    }
+}
+
+if (-not $mawtScriptFoundLocally) {
+    $maxRetries = 5
+    $retryDelaySec = 5
+    $downloadSuccess = $false
+
+    for ($i = 0; $i -lt $maxRetries; $i++) {
+        try {
+            Write-Host "Attempting download (Attempt $($i + 1)/$maxRetries)..." -ForegroundColor DarkGray
+            Invoke-WebRequest -Uri $ScriptUrl -OutFile $MawtScriptPath -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+            $downloadSuccess = $true
+            break # Exit loop if successful
+        } catch {
+            Write-Host "Download failed: $($_.Exception.Message)" -ForegroundColor Yellow
+            if ($i -lt ($maxRetries - 1)) {
+                Write-Host "Retrying in $retryDelaySec seconds..." -ForegroundColor Yellow
+                Start-Sleep -Seconds $retryDelaySec
+            }
+        }
+    }
+
+    if (-not $downloadSuccess) {
+        Write-Error "Error: Failed to download mawt.ps1 after multiple retries to $MawtScriptPath." -ForegroundColor Red
+        exit 1
+    }
+}
 
 if (Test-Path $MawtScriptPath) {
-    Write-Host "MAWT script download complete." -ForegroundColor Green
-    Write-Host "Verifying downloaded mawt.ps1 content (first 8 lines):" -ForegroundColor DarkGray
+    Write-Host "MAWT script setup complete." -ForegroundColor Green # Changed message
+    Write-Host "Verifying mawt.ps1 content (first 8 lines from $MawtScriptPath):" -ForegroundColor DarkGray # Changed message
     (Get-Content -Path $MawtScriptPath -TotalCount 8) | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
 } else {
-    Write-Error "Error: Failed to download mawt.ps1 to $MawtScriptPath." -ForegroundColor Red
+    Write-Error "Error: mawt.ps1 not found at $MawtScriptPath after setup attempts." -ForegroundColor Red # Changed message
     exit 1
 }
 
