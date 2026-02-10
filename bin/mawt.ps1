@@ -305,15 +305,18 @@ function Create-NewWorktree {
     # Execute git worktree add and capture output
     # Use call operator and redirect all streams for better compatibility with older PowerShell
     $command = "git"
-    $output = & $command $commandArgs 2>&1 # Redirect all output (stdout and stderr) to $output
+    # Capture output and suppress PowerShell's default error handling for native commands
+    $output = & $command $commandArgs 2>&1 | Out-String # Redirect all output (stdout and stderr) to $output
     $exitCode = $LastExitCode
 
     if ($exitCode -ne 0) {
-        Write-Error "Error creating worktree (Exit Code $exitCode): $($output | Out-String)" -ForegroundColor Red
+        Write-Error "Error creating worktree (Exit Code $exitCode): $($output)" -ForegroundColor Red # Removed Out-String from $output here
         Pop-Location
         return $null
     } else {
         Write-Host "Worktree for '$newBranch' created at $targetPath." -ForegroundColor Green
+        # Optional: Verify worktree creation by listing worktrees
+        # git worktree list | Select-String -Pattern $targetPath | Out-Null # For debugging
         Pop-Location
         return $targetPath
     }
