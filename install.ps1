@@ -9,14 +9,15 @@ $ConfigFile = "$InstallDir\config"
 # Default branch
 $InstallBranch = "main"
 
-# Parse arguments (PowerShell style)
-[CmdletBinding()]
-param(
-    [string]$Branch = "main"
-)
-
-# Override default with parsed parameter
-$InstallBranch = $Branch
+# Parse arguments from $args (for broader compatibility)
+if ($args.Length -ge 2 -and $args[0] -eq "-Branch") {
+    $InstallBranch = $args[1]
+} elseif ($args.Length -ge 1 -and -not ($args[0] -match '^-')) { # Positional arg for branch
+    # This allows for `./install.ps1 feature/windows-support` (less standard for PowerShell)
+    # For now, let's stick to named parameter style parsing.
+    # If no named parameter, default to main.
+    $InstallBranch = "main"
+}
 
 Write-Host "Installing Multi-Agent Worktree Manager (MAWT) from branch '$InstallBranch'..." -ForegroundColor Cyan
 
