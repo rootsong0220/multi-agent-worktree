@@ -1,31 +1,26 @@
 #!/bin/bash
 
 # MAWT: Multi-Agent Worktree Manager
-# Usage: mawt <command> [args]
+# Usage: mawt [command]
 
 set -e
 
 MAWT_ROOT="$HOME/.mawt"
 CONFIG_FILE="$MAWT_ROOT/config"
 
-# Load config or set default
+# Load config
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 fi
 
-if [ -z "$WORKSPACE_DIR" ]; then
-    WORKSPACE_DIR="$HOME/workspace" # Default workspace directory
-fi
+# Defaults
+WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/workspace}"
+GITLAB_BASE_URL="${GITLAB_BASE_URL:-https://gitlab.com}"
+GITLAB_BASE_URL=${GITLAB_BASE_URL%/} # Ensure no trailing slash
 
-# Default Base URL if not set
-if [ -z "$GITLAB_BASE_URL" ]; then
-    GITLAB_BASE_URL="https://gitlab.com"
-fi
-# Ensure no trailing slash
-GITLAB_BASE_URL=${GITLAB_BASE_URL%/}
-
+# Dependencies check
 check_deps() {
-    local deps=("git" "fzf" "jq")
+    local deps=("git" "fzf" "jq" "curl")
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             echo "Error: '$dep' is required but not installed."
@@ -36,385 +31,266 @@ check_deps() {
 
 # Helper: Detect WSL
 is_wsl() {
-    if grep -q Microsoft /proc/version; then
-        return 0
-    else
-        return 1
-    fi
+    grep -q Microsoft /proc/version
 }
 
-# Command: Init (Clone Repo as Bare for Worktrees)
-cmd_init() {
-    local repo_input="$1"
-    local REPO_URL=""
-
-    # 1. Input is missing: Try to fetch from GitLab API
-    if [ -z "$repo_input" ]; then
-        echo "Initialize Repository for Worktree Management"
-        echo "---------------------------------------------"
-        echo "Base URL: $GITLAB_BASE_URL"
-        
-        if [ -z "$GITLAB_TOKEN" ]; then
-            echo "Warning: GITLAB_TOKEN is not set in $CONFIG_FILE."
-            read -s -p "Enter GitLab Personal Access Token to list projects: " GITLAB_TOKEN
-            echo ""
-        fi
-
-        if [ -z "$GITLAB_TOKEN" ]; then
-             echo "Error: Token is required to fetch project list."
-             read -p "Enter repository URL/path manually instead: " repo_input
-        else
-            echo "Fetching projects from $GITLAB_BASE_URL..."
-            
-            # Fetch projects (membership=true gets projects the user is a member of)
-            RESP_FILE=$(mktemp)
-            HTTP_CODE=$(curl --silent --write-out "%{http_code}" --output "$RESP_FILE" --header "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_BASE_URL/api/v4/projects?membership=true&simple=true&per_page=100&order_by=last_activity_at")
-            
-            RESPONSE=$(cat "$RESP_FILE")
-            rm "$RESP_FILE"
-
-            if [ "$HTTP_CODE" -ne 200 ]; then
-                echo "Error: Failed to fetch projects (HTTP $HTTP_CODE)."
-                echo "Response: $RESPONSE"
-                echo "Check your GitLab Token and Base URL."
-                exit 1
-            fi
-            
-            # Check if response is valid JSON array
-            if ! echo "$RESPONSE" | jq -e . >/dev/null 2>&1; then
-                echo "Error: Invalid JSON response from GitLab API."
-                echo "Response snippet: ${RESPONSE:0:100}..."
-                exit 1
-            fi
-
-            # Parse projects using jq
-            PROJECTS_FILE=$(mktemp)
-            echo "$RESPONSE" | jq -r '.[] | "\(.path_with_namespace)\t\(.ssh_url_to_repo)\t\(.http_url_to_repo)"' > "$PROJECTS_FILE"
-            
-            PROJECT_COUNT=$(wc -l < "$PROJECTS_FILE")
-            
-            if [ "$PROJECT_COUNT" -eq 0 ]; then
-                echo "No projects found."
-                rm "$PROJECTS_FILE"
-                read -p "Enter repository URL/path manually: " repo_input
-            else
-                echo "Found $PROJECT_COUNT projects."
-                
-                # Use fzf if available for better selection, else select
-                if command -v fzf &> /dev/null; then
-                    # Allow fzf to exit with non-zero (e.g. abort) without killing script due to set -e
-                    SELECTED=$(cat "$PROJECTS_FILE" | awk -F'\t' '{print $1}' | fzf --prompt="Select Repository: " --height=20 --layout=reverse) || true
-                else
-                    # Fallback to simple select
-                    mapfile -t PROJECT_NAMES < <(awk -F'\t' '{print $1}' "$PROJECTS_FILE")
-                    echo "Select a project:"
-                    select p in "${PROJECT_NAMES[@]}"; do
-                        if [ -n "$p" ]; then
-                            SELECTED="$p"
-                            break
-                        fi
-                    done
-                fi
-                
-                if [ -n "$SELECTED" ]; then
-                    # Retrieve URL for selected project based on protocol preference
-                    # grep the line starting with selected name
-                    LINE=$(grep "^${SELECTED}\t" "$PROJECTS_FILE")
-                    SSH_URL=$(echo "$LINE" | awk -F'\t' '{print $2}')
-                    HTTP_URL=$(echo "$LINE" | awk -F'\t' '{print $3}')
-                    
-                    if [ "$GIT_PROTOCOL" == "https" ]; then
-                        REPO_URL="$HTTP_URL"
-                        PROTOCOL="https"
-                    else
-                        REPO_URL="$SSH_URL"
-                        PROTOCOL="ssh"
-                    fi
-                    echo "Selected: $SELECTED ($REPO_URL)"
-                else
-                    echo "No selection made or cancelled."
-                    rm "$PROJECTS_FILE"
-                    exit 1
-                fi
-                rm "$PROJECTS_FILE"
-            fi
-        fi
-    fi
-
-    # 2. If REPO_URL is still empty (manual input or no API), construct it
-    if [ -z "$REPO_URL" ]; then
-        if [ -z "$repo_input" ]; then
-             echo "Error: Repository is required."
-             exit 1
-        fi
-        
-        if [[ "$repo_input" == git@* || "$repo_input" == http* ]]; then
-            REPO_URL="$repo_input"
-             if [[ "$REPO_URL" == git@* ]]; then PROTOCOL="ssh"; else PROTOCOL="https"; fi
-        else
-            # Construct URL using Base URL
-            if [ "$GIT_PROTOCOL" == "https" ]; then
-                REPO_URL="$GITLAB_BASE_URL/${repo_input}.git"
-                PROTOCOL="https"
-            else
-                # Fallback: Assume standard git@domain:path structure
-                DOMAIN=$(echo "$GITLAB_BASE_URL" | sed -e 's|[a-z]*://||' -e 's|/.*||' -e 's|:[0-9]*||')
-                REPO_URL="git@${DOMAIN}:${repo_input}.git"
-                PROTOCOL="ssh"
-            fi
-            echo "Constructed URL ($PROTOCOL): $REPO_URL"
-        fi
-    fi
-
-    # Extract repo name
-    local repo_name=$(basename "$REPO_URL" .git)
-    local target_dir="$WORKSPACE_DIR/$repo_name"
-
-    if [ -d "$target_dir" ]; then
-        echo "Directory '$target_dir' already exists."
-        # Check if it's a bare repo or standard repo
-        if [ -f "$target_dir/config" ] && grep -q "bare = true" "$target_dir/config"; then
-            echo "It appears to be a bare repository (good for worktrees)."
-            exit 0
-        elif [ -d "$target_dir/.git" ]; then
-            echo "Standard Git repository detected."
-            read -p "Do you want to convert this to a Worktree-managed structure? (y/N) " confirm
-            if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-                cmd_convert "$target_dir"
-            else
-                echo "Skipping conversion. Use 'mawt convert' later if needed."
-            fi
-            exit 0
-        else
-            echo "Directory exists but is not a valid Git repository."
-            exit 1
-        fi
-    fi
-
-    echo "Cloning '$repo_name' as a bare repository into '$target_dir'..."
-    mkdir -p "$target_dir"
-    git clone --bare "$REPO_URL" "$target_dir/.bare"
+# ------------------------------------------------------------------
+# 1. Repository Selection (Remote + Local)
+# ------------------------------------------------------------------
+select_repository() {
+    echo "Fetching project list from GitLab ($GITLAB_BASE_URL)..."
     
-    # Create a default 'main' worktree
-    echo "Creating default worktree 'main'..."
-    cd "$target_dir/.bare"
-    git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
-    if git rev-parse --verify main >/dev/null 2>&1; then
-        git worktree add "$target_dir/main" main
-    elif git rev-parse --verify master >/dev/null 2>&1; then
-        git worktree add "$target_dir/main" master
-    else
-        echo "Warning: Could not determine default branch (main/master). You may need to create a worktree manually."
-    fi
-
-    echo "Repository initialized for worktree management!"
-    echo "Location: $target_dir"
-}
-
-# Command: Convert Standard Repo to Bare/Worktree Setup
-cmd_convert() {
-    local repo_path="$1"
-    
-    if [ ! -d "$repo_path/.git" ]; then
-        echo "Error: '$repo_path' is not a standard Git repository."
+    if [ -z "$GITLAB_TOKEN" ]; then
+        echo "Error: GITLAB_TOKEN is missing in config."
+        echo "Please reinstall or add it to ~/.mawt/config"
         exit 1
     fi
 
-    read -p "Convert '$repo_path' to Worktree structure? This will move the .git folder and create a worktree for the current branch. (y/N) " confirm
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-        echo "Aborted."
+    # API Call
+    RESP_FILE=$(mktemp)
+    HTTP_CODE=$(curl --silent --write-out "%{http_code}" --output "$RESP_FILE" \
+        --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+        "$GITLAB_BASE_URL/api/v4/projects?membership=true&simple=true&per_page=100&order_by=last_activity_at")
+    
+    RESPONSE=$(cat "$RESP_FILE")
+    rm "$RESP_FILE"
+
+    if [ "$HTTP_CODE" -ne 200 ]; then
+        echo "Error: Failed to fetch projects (HTTP $HTTP_CODE)."
+        echo "Response: $RESPONSE"
+        exit 1
+    fi
+
+    # Parse JSON
+    PROJECTS_FILE=$(mktemp)
+    # Format: "path_with_namespace  |  ssh_url  |  http_url"
+    echo "$RESPONSE" | jq -r '.[] | "\(.path_with_namespace)\t\(.ssh_url_to_repo)\t\(.http_url_to_repo)"' > "$PROJECTS_FILE"
+
+    # Prepare Display List (Check Local Existence)
+    DISPLAY_FILE=$(mktemp)
+    
+    while IFS=$'\t' read -r path ssh_url http_url; do
+        repo_name=$(basename "$path")
+        if [ -d "$WORKSPACE_DIR/$repo_name" ]; then
+            echo "[Local]  $path" >> "$DISPLAY_FILE"
+        else
+            echo "[Remote] $path" >> "$DISPLAY_FILE"
+        fi
+    done < "$PROJECTS_FILE"
+
+    # FZF Selection
+    echo "Select a repository to work on:"
+    SELECTED_LINE=$(cat "$DISPLAY_FILE" | fzf --prompt="Repo> " --height=40% --layout=reverse) || true
+
+    if [ -z "$SELECTED_LINE" ]; then
+        echo "No repository selected."
+        rm "$PROJECTS_FILE" "$DISPLAY_FILE"
         exit 0
     fi
 
-    echo "Converting..."
-    # 1. Move .git to .bare
-    mv "$repo_path/.git" "$repo_path/.bare"
+    # Extract clean path
+    # Remove "[Local]  " or "[Remote] " prefix (fixed width + space)
+    SELECTED_PATH=$(echo "$SELECTED_LINE" | awk '{print $2}')
     
-    # 2. Configure bare repo
-    cd "$repo_path/.bare"
-    git config --bool core.bare true
-    
-    # 3. Create worktree for current checkout
-    branch_name=$(git symbolic-ref --short HEAD)
-    echo "Detected current branch: $branch_name"
-    
-    cd ..
-    mkdir -p "$branch_name"
-    cd ".bare"
-    git worktree add "../$branch_name" "$branch_name"
-    
-    echo "Conversion complete! Original repo is now at '$repo_path/.bare' and worktree at '$repo_path/$branch_name'."
+    # Get URLs from PROJECTS_FILE
+    REPO_INFO=$(grep "^${SELECTED_PATH}\t" "$PROJECTS_FILE")
+    SSH_URL=$(echo "$REPO_INFO" | awk -F'\t' '{print $2}')
+    HTTP_URL=$(echo "$REPO_INFO" | awk -F'\t' '{print $3}')
+
+    rm "$PROJECTS_FILE" "$DISPLAY_FILE"
+
+    # Return values via global variables (bash limitation workaround)
+    SEL_REPO_NAME=$(basename "$SELECTED_PATH")
+    SEL_REPO_PATH="$SELECTED_PATH"
+    SEL_SSH_URL="$SSH_URL"
+    SEL_HTTP_URL="$HTTP_URL"
 }
 
-# Command: Work (Create Worktree & Launch Agent)
-cmd_work() {
+# ------------------------------------------------------------------
+# 2. Ensure Clone (Bare Repo)
+# ------------------------------------------------------------------
+ensure_cloned() {
     local repo_name="$1"
-    local agent="$2"
-    local task_name="$3"
+    local ssh_url="$2"
+    local http_url="$3"
+    
+    local target_dir="$WORKSPACE_DIR/$repo_name"
 
-    # 1. Interactive Repo Selection
-    if [ -z "$repo_name" ]; then
-        echo "Select a repository:"
-        # List dirs in workspace that are likely repos
-        if [ ! -d "$WORKSPACE_DIR" ]; then
-            echo "Workspace directory not found. Run 'mawt init' first."
-            exit 1
-        fi
-        
-        # Check if any directories exist to avoid error in ls/xargs
-        # Use find to list directories (maxdepth 1) and count them, or simpler glob check
-        if [ -z "$(ls -A "$WORKSPACE_DIR" 2>/dev/null)" ]; then
-            echo "No repositories found in $WORKSPACE_DIR. Run 'mawt init' first."
-            exit 1
-        fi
-
-        # Capture directories into an array safely
-        # Ensure we only pick up directories
-        mapfile -t repos < <(find "$WORKSPACE_DIR" -mindepth 1 -maxdepth 1 -type d -printf "%f\n" 2>/dev/null)
-        
-        if [ ${#repos[@]} -eq 0 ]; then
-            echo "No repositories found in $WORKSPACE_DIR. Run 'mawt init' first."
-            exit 1
-        fi
-        
-        select r in "${repos[@]}"; do
-            if [ -n "$r" ]; then
-                repo_name="$r"
-                break
+    # Check if exists
+    if [ -d "$target_dir" ]; then
+        if [ -d "$target_dir/.bare" ]; then
+            return 0 # Already set up
+        elif [ -d "$target_dir/.git" ]; then
+            echo "Standard repository detected at $target_dir."
+            read -p "Convert to Worktree structure? (y/N) " confirm
+            if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                cmd_convert "$target_dir"
+                return 0
             else
-                echo "Invalid selection. Please try again."
+                echo "Cannot proceed without conversion."
+                exit 1
             fi
-        done
+        else
+            echo "Directory $target_dir exists but is not a git repo."
+            exit 1
+        fi
     fi
 
-    local repo_dir="$WORKSPACE_DIR/$repo_name"
-    if [ ! -d "$repo_dir/.bare" ]; then
-        echo "Error: Repository '$repo_name' not initialized for worktrees (missing .bare)."
-        echo "Run 'mawt init' to set up a repo."
+    # Determine URL
+    if [ "$GIT_PROTOCOL" == "https" ]; then
+        REPO_URL="$http_url"
+    else
+        REPO_URL="$ssh_url"
+    fi
+
+    echo "Cloning $repo_name ($REPO_URL)..."
+    mkdir -p "$target_dir"
+    git clone --bare "$REPO_URL" "$target_dir/.bare"
+
+    # Configure fetch
+    cd "$target_dir/.bare"
+    git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+    
+    echo "Repository cloned successfully."
+}
+
+# ------------------------------------------------------------------
+# 3. Worktree / Branch Selection
+# ------------------------------------------------------------------
+select_worktree_action() {
+    local repo_dir="$1"
+    cd "$repo_dir/.bare"
+
+    echo "Fetching latest updates..."
+    git fetch --all --prune > /dev/null 2>&1
+
+    # Get Existing Worktrees (exclude bare)
+    local wt_list
+    wt_list=$(git worktree list | grep -v ".bare" | awk '{print $1 " [" $3 "]"}')
+
+    # Menu Options
+    local action
+    if [ -z "$wt_list" ]; then
+        action="Create New Worktree"
+    else
+        echo "Choose action:"
+        action=$(printf "Create New Worktree\n$wt_list" | fzf --prompt="Action> " --header="Existing Worktrees:") || true
+    fi
+
+    if [ -z "$action" ]; then echo "Cancelled."; exit 0; fi
+
+    if [[ "$action" == "Create New Worktree" ]]; then
+        create_new_worktree "$repo_dir"
+    else
+        # Extract path from line "path [branch]"
+        EXISTING_PATH=$(echo "$action" | awk '{print $1}')
+        TARGET_WORKTREE="$EXISTING_PATH"
+    fi
+}
+
+create_new_worktree() {
+    local repo_dir="$1"
+    cd "$repo_dir/.bare"
+
+    # 1. Select Base Branch
+    echo "Select Base Branch:"
+    # List remote branches, remove 'origin/', strip whitespace
+    BASE_BRANCH=$(git branch -r | grep -v 'HEAD' | sed 's/origin\///' | sed 's/^[ \t]*//' | fzf --prompt="Base> ") || true
+    
+    if [ -z "$BASE_BRANCH" ]; then echo "No base branch selected."; exit 1; fi
+
+    # 2. Input New Branch Name
+    read -p "Enter new branch name (e.g. feat/login): " NEW_BRANCH
+    if [ -z "$NEW_BRANCH" ]; then echo "Branch name required."; exit 1; fi
+
+    # 3. Create
+    TARGET_WORKTREE="$repo_dir/$(basename "$NEW_BRANCH")"
+    # If path exists, append random suffix or ask? For now, assume simple mapping.
+    if [ -d "$TARGET_WORKTREE" ]; then
+        TARGET_WORKTREE="${TARGET_WORKTREE}_$(date +%s)"
+    fi
+
+    echo "Creating worktree '$NEW_BRANCH' from 'origin/$BASE_BRANCH'..."
+    git worktree add "$TARGET_WORKTREE" -b "$NEW_BRANCH" "origin/$BASE_BRANCH"
+}
+
+# ------------------------------------------------------------------
+# 4. Agent Launch
+# ------------------------------------------------------------------
+launch_agent() {
+    local wt_path="$1"
+    
+    if [ ! -d "$wt_path" ]; then
+        echo "Error: Worktree path not found: $wt_path"
         exit 1
     fi
 
-    # 2. Interactive Agent Selection
-    if [ -z "$agent" ]; then
-        echo "Select an AI Agent:"
-        agents=("gemini" "claude" "codex")
-        select a in "${agents[@]}"; do
-            if [ -n "$a" ]; then
-                agent="$a"
-                break
-            else
-                echo "Invalid selection. Please try again."
-            fi
-        done
-    fi
+    cd "$wt_path"
+    echo "Switched to: $(pwd)"
 
-    # 3. Interactive Task Name
-    if [ -z "$task_name" ]; then
-        echo "Enter a name for this task/worktree (e.g., fix-login-bug):"
-        read -p "> " task_name
-        if [ -z "$task_name" ]; then
-            echo "Task name cannot be empty."
-            exit 1
-        fi
-    fi
+    echo "Select AI Agent:"
+    local agents=("gemini" "claude" "codex" "shell")
+    AGENT=$(printf "%s\n" "${agents[@]}" | fzf --prompt="Agent> " --height=10 --layout=reverse) || true
 
-    local worktree_path="$repo_dir/$task_name"
-    
-    if [ -d "$worktree_path" ]; then
-        echo "Worktree '$task_name' already exists. Switching to it..."
-    else
-        echo "Creating worktree '$task_name'..."
-        cd "$repo_dir/.bare"
-        # Check if the branch exists locally or remotely to determine creation logic
-        # For simplicity, we create a new branch from default/HEAD for the task
-        git worktree add "$worktree_path" -b "feat/$task_name"
-    fi
-
-    echo "Launching $agent in $worktree_path..."
-    cd "$worktree_path"
-
-    case "$agent" in
+    case "$AGENT" in
         gemini)
-            if command -v gemini &> /dev/null; then
-                gemini
-            else
-                echo "Gemini CLI not found."
-            fi
-            ;;
+            if command -v gemini &> /dev/null; then gemini; else echo "gemini not found"; fi ;;
         claude)
-            if command -v claude &> /dev/null; then
-                claude
-            else
-                echo "Claude CLI not found."
-            fi
-            ;;
+            if command -v claude &> /dev/null; then claude; else echo "claude not found"; fi ;;
         codex)
-            if command -v codex &> /dev/null; then
-                codex
-            else
-                echo "Codex CLI not found."
-            fi
+            if command -v codex &> /dev/null; then codex; else echo "codex not found"; fi ;;
+        shell)
+            echo "Starting shell..."
+            $SHELL
             ;;
         *)
-            echo "Unknown agent: $agent"
-            exit 1
+            echo "No agent selected."
             ;;
     esac
 }
 
-# Command: List Managed Repositories & Worktrees
+# ------------------------------------------------------------------
+# Utils
+# ------------------------------------------------------------------
+cmd_convert() {
+    local repo_path="$1"
+    echo "Converting '$repo_path'..."
+    mv "$repo_path/.git" "$repo_path/.bare"
+    cd "$repo_path/.bare"
+    git config --bool core.bare true
+    local branch_name=$(git symbolic-ref --short HEAD)
+    cd ..
+    mkdir -p "$branch_name"
+    cd ".bare"
+    git worktree add "../$branch_name" "$branch_name"
+    echo "Converted."
+}
+
 cmd_list() {
     echo "Managed Repositories in $WORKSPACE_DIR:"
-    if [ ! -d "$WORKSPACE_DIR" ]; then
-        echo "  No workspace found at $WORKSPACE_DIR"
-        return
-    fi
-
     for repo in "$WORKSPACE_DIR"/*; do
-        if [ -d "$repo" ]; then
-            repo_name=$(basename "$repo")
-            if [ -d "$repo/.bare" ]; then
-                echo "- $repo_name (Worktree Managed)"
-                # List worktrees
-                cd "$repo/.bare"
-                git worktree list | while read line; do
-                    wt_path=$(echo "$line" | awk '{print $1}')
-                    wt_branch=$(echo "$line" | awk '{print $3}' | sed 's/\[//;s/\]//')
-                    if [[ "$wt_path" == *".bare" ]]; then continue; fi # Skip bare repo entry
-                    echo "    - $(basename "$wt_path") [$wt_branch]"
-                done
-            elif [ -d "$repo/.git" ]; then
-                echo "- $repo_name (Standard Repo)"
-            fi
+        if [ -d "$repo/.bare" ]; then
+            echo "- $(basename "$repo")"
+            cd "$repo/.bare"
+            git worktree list | grep -v ".bare" | awk '{print "    - " $3 " (" $1 ")"}'
         fi
     done
 }
 
-# Command: Uninstall MAWT
 cmd_uninstall() {
-    echo "Warning: This will remove MAWT configuration and the CLI tool."
-    echo "Your workspace and repositories ($WORKSPACE_DIR) will NOT be deleted."
-    read -p "Are you sure you want to uninstall MAWT? (type 'yes' to confirm): " confirm
-    
+    read -p "Uninstall MAWT? (yes/no): " confirm
     if [ "$confirm" == "yes" ]; then
         rm -rf "$MAWT_ROOT"
-        echo "MAWT uninstalled successfully."
-        echo "Please remove the PATH entry from your shell configuration manually if you wish."
-    else
-        echo "Uninstall cancelled."
+        echo "Uninstalled."
     fi
 }
 
+# ------------------------------------------------------------------
 # Main Dispatch
+# ------------------------------------------------------------------
+check_deps
+
 case "$1" in
-    init)
-        shift
-        cmd_init "$@"
-        ;;
-    work)
-        shift
-        cmd_work "$@"
-        ;;
     list)
         cmd_list
         ;;
@@ -422,18 +298,16 @@ case "$1" in
         cmd_uninstall
         ;;
     help|--help|-h)
-        echo "Usage: mawt <command> [args]"
-        echo ""
-        echo "Commands:"
-        echo "  init [url]               Initialize a repo (fetches list from GitLab if url omitted)"
-        echo "  work [repo] [agent]      Create worktree & run agent (interactive)"
-        echo "  list                     List managed repositories"
-        echo "  uninstall                Remove MAWT CLI and configuration"
-        echo "  help                     Show this help"
+        echo "Usage: mawt"
+        echo "  (No args)  Start interactive workflow (Select Repo -> Worktree -> Agent)"
+        echo "  list       List managed repositories"
+        echo "  uninstall  Remove MAWT"
         ;;
     *)
-        echo "Unknown command: $1"
-        echo "Run 'mawt help' for usage."
-        exit 1
+        # Default Flow
+        select_repository
+        ensure_cloned "$SEL_REPO_NAME" "$SEL_SSH_URL" "$SEL_HTTP_URL"
+        select_worktree_action "$WORKSPACE_DIR/$SEL_REPO_NAME"
+        launch_agent "$TARGET_WORKTREE"
         ;;
 esac
