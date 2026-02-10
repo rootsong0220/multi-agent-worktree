@@ -21,7 +21,8 @@ if (Test-Path ".\bin\mawt.ps1") {
 } else {
     # Production: Download from GitHub (Feature Branch for testing)
     $ScriptUrl = "https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/feature/windows-support/bin/mawt.ps1"
-    Invoke-WebRequest -Uri $ScriptUrl -OutFile $MawtScriptPath
+    Write-Host "Downloading mawt.ps1 from GitHub..." -ForegroundColor Cyan
+    Invoke-WebRequest -Uri $ScriptUrl -OutFile $MawtScriptPath -UseBasicParsing
 }
 
 # Create a wrapper batch file for easy execution in cmd/powershell as 'mawt'
