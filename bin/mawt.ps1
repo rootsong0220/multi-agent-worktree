@@ -404,12 +404,33 @@ function Launch-Agent {
     
     Write-Host "Launching $agent..." -ForegroundColor Cyan
     
+    $agentArgs = @()
+    $selectedModel = $null
+
+    switch ($agent) {
+        "gemini" {
+            $models = @("gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro") # 업데이트된 Gemini 모델 목록
+            $selectedModel = Select-Item -Items $models -PromptText "Select Gemini Model"
+            if ($selectedModel) { $agentArgs += "--model"; $agentArgs += "$selectedModel" }
+        }
+        "claude" {
+            $models = @("claude-opus-4-6", "claude-sonnet-4-5-20250929") # 업데이트된 Claude 모델 목록
+            $selectedModel = Select-Item -Items $models -PromptText "Select Claude Model"
+            if ($selectedModel) { $agentArgs += "--model"; $agentArgs += "$selectedModel" }
+        }
+        "codex" {
+            $models = @("gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-mini") # 업데이트된 Codex 모델 목록
+            $selectedModel = Select-Item -Items $models -PromptText "Select Codex Model"
+            if ($selectedModel) { $agentArgs += "--model"; $agentArgs += "$selectedModel" }
+        }
+    }
+
     if ($agent -eq "powershell") {
         # Start a nested shell
         pwsh
     } else {
         if (Get-Command $agent -ErrorAction SilentlyContinue) {
-            & $agent
+            & $agent $agentArgs
         } else {
             Write-Error "$agent not found in PATH."
         }
