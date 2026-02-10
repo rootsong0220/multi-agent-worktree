@@ -5,10 +5,16 @@ A CLI wrapper to manage GitLab repositories using Git Worktrees, specifically de
 ## Overview
 
 MAWT simplifies the workflow of using multiple AI agents on the same codebase without conflicts. It handles:
+- **Private GitLab Integration**: Fetches repository lists from your GitLab instance.
 - **Smart Cloning**: Clones repositories as "bare" repos by default to enable Git Worktrees.
 - **Conversion**: Detects existing standard repositories and converts them to a Worktree structure upon request.
 - **Agent Dispatch**: Launches specific AI CLI tools in their own isolated worktrees.
 - **WSL Optimized**: Built with Windows Subsystem for Linux in mind.
+
+## Prerequisites
+
+- **Tools**: `git`, `curl`, `jq`, `unzip`, `tar`
+- **Optional**: `fzf` (for better interactive selection)
 
 ## Installation & Updates
 
@@ -31,9 +37,10 @@ Alternatively, simply restart your terminal.
 
 ### First-Time Setup
 During the first installation, the script will interactively ask for your preferences:
-1.  **Workspace Directory**: Where to store your repositories (default: `~/workspace`).
+1.  **Workspace Directory**: Where to store your repositories.
 2.  **Git Protocol**: Choose between `SSH` (recommended) or `HTTPS`.
-3.  **GitLab Token** (Optional): Securely saved for HTTPS authentication or agent usage.
+3.  **GitLab Base URL**: (New) URL of your GitLab instance (e.g., `http://gitlab.mycompany.com`).
+4.  **GitLab Token**: Required for fetching the project list from your Private GitLab instance.
 
 *These settings are saved to `~/.mawt/config`.*
 

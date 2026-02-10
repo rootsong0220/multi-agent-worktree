@@ -17,7 +17,7 @@ fi
 
 # 1. Check Dependencies
 echo "Checking dependencies..."
-deps=("git" "curl" "unzip" "tar")
+deps=("git" "curl" "unzip" "tar" "jq")
 for dep in "${deps[@]}"; do
     if ! command -v "$dep" &> /dev/null; then
         echo "Error: '$dep' is not installed. Please install it and try again."
@@ -93,11 +93,21 @@ else
     fi
     echo "Selected protocol: $GIT_PROTOCOL"
 
-    # 5.3 GitLab Token (Optional)
+    # 5.3 GitLab Base URL (For Private GitLab)
     echo ""
-    echo "Enter GitLab Personal Access Token (Optional)."
-    echo "This can be used by agents or for HTTPS authentication helper."
-    echo "If strictly using SSH, you can skip this."
+    echo "Enter GitLab Base URL (e.g., http://gitlab.company.com)."
+    echo "Press Enter to use default (https://gitlab.com)."
+    read -p "Base URL: " GITLAB_BASE_URL
+    if [ -z "$GITLAB_BASE_URL" ]; then
+        GITLAB_BASE_URL="https://gitlab.com"
+    fi
+    # Remove trailing slash
+    GITLAB_BASE_URL=${GITLAB_BASE_URL%/}
+
+    # 5.4 GitLab Token (Optional but recommended for API access)
+    echo ""
+    echo "Enter GitLab Personal Access Token."
+    echo "Required for fetching repository lists from Private GitLab."
     read -s -p "Token (input will be hidden): " GITLAB_TOKEN
     echo ""
 
@@ -108,6 +118,7 @@ else
     {
         echo "WORKSPACE_DIR=\"$USER_WS\""
         echo "GIT_PROTOCOL=\"$GIT_PROTOCOL\""
+        echo "GITLAB_BASE_URL=\"$GITLAB_BASE_URL\""
         echo "GITLAB_TOKEN=\"$GITLAB_TOKEN\""
     } > "$CONFIG_FILE"
 
