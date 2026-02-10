@@ -33,7 +33,7 @@ Write-Host "MAWT binaries directory set to: $BinDir" -ForegroundColor DarkGray
 
 # 2. Download MAWT Script
 $MawtScriptPath = "$BinDir\mawt.ps1"
-$ScriptUrl = "https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/$InstallBranch/bin/mawt.ps1"
+$ScriptUrl = "https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/$InstallBranch/bin/mawt.ps1?_=$([System.DateTimeOffset]::Now.ToUnixTimeMilliseconds())"
 Write-Host "Downloading mawt.ps1 from branch '$InstallBranch' on GitHub..." -ForegroundColor Cyan
 Write-Host "Targeting: $MawtScriptPath" -ForegroundColor DarkGray
 

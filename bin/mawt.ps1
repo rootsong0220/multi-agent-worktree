@@ -303,15 +303,13 @@ function Create-NewWorktree {
     }
 
     # Execute git worktree add and capture output
-    $process = Start-Process -FilePath git -ArgumentList $commandArgs -PassThru -NoNewWindow -RedirectStandardOutput ([System.IO.Path]::GetTempFileName()) -RedirectStandardError ([System.IO.Path]::GetTempFileName())
-    $process.WaitForExit()
-    $stdout = Get-Content $process.StandardOutput.ToString()
-    $stderr = Get-Content $process.StandardError.ToString()
+    # Use call operator and redirect all streams for better compatibility with older PowerShell
+    $command = "git"
+    $output = & $command $commandArgs 2>&1 # Redirect all output (stdout and stderr) to $output
+    $exitCode = $LastExitCode
 
-    Remove-Item $process.StandardOutput.ToString(), $process.StandardError.ToString()
-
-    if ($process.ExitCode -ne 0) {
-        Write-Error "Error creating worktree: $($stderr | Out-String)" -ForegroundColor Red
+    if ($exitCode -ne 0) {
+        Write-Error "Error creating worktree (Exit Code $exitCode): $($output | Out-String)" -ForegroundColor Red
         Pop-Location
         return $null
     } else {
