@@ -6,7 +6,19 @@ $InstallDir = "$HOME\.mawt"
 $BinDir = "$InstallDir\bin"
 $ConfigFile = "$InstallDir\config"
 
-Write-Host "Installing Multi-Agent Worktree Manager (MAWT)..." -ForegroundColor Cyan
+# Default branch
+$InstallBranch = "main"
+
+# Parse arguments (PowerShell style)
+[CmdletBinding()]
+param(
+    [string]$Branch = "main"
+)
+
+# Override default with parsed parameter
+$InstallBranch = $Branch
+
+Write-Host "Installing Multi-Agent Worktree Manager (MAWT) from branch '$InstallBranch'..." -ForegroundColor Cyan
 
 # 1. Create Directories
 if (-not (Test-Path $BinDir)) {
@@ -19,9 +31,9 @@ $MawtScriptPath = "$BinDir\mawt.ps1"
 if (Test-Path ".\bin\mawt.ps1") {
     Copy-Item ".\bin\mawt.ps1" -Destination $MawtScriptPath -Force
 } else {
-    # Production: Download from GitHub (Feature Branch for testing)
-    $ScriptUrl = "https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/feature/windows-support/bin/mawt.ps1"
-    Write-Host "Downloading mawt.ps1 from GitHub..." -ForegroundColor Cyan
+    # Production: Download from GitHub
+    $ScriptUrl = "https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/$InstallBranch/bin/mawt.ps1"
+    Write-Host "Downloading mawt.ps1 from branch '$InstallBranch' on GitHub..." -ForegroundColor Cyan
     Invoke-WebRequest -Uri $ScriptUrl -OutFile $MawtScriptPath -UseBasicParsing
 }
 

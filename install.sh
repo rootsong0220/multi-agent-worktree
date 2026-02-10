@@ -8,10 +8,28 @@ INSTALL_DIR="$HOME/.mawt"
 BIN_DIR="$INSTALL_DIR/bin"
 CONFIG_FILE="$INSTALL_DIR/config"
 
+INSTALL_BRANCH="main" # Default branch
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    key="$1"
+    case $key in
+        -b|--branch)
+            INSTALL_BRANCH="$2"
+            shift # past argument
+            shift # past value
+            ;;
+        *)
+            # Unknown option or positional argument
+            shift # past argument
+            ;;
+    esac
+done
+
 if [ -f "$BIN_DIR/mawt" ]; then
-    echo "Updating Multi-Agent Worktree Manager (MAWT)..."
+    echo "Updating Multi-Agent Worktree Manager (MAWT) from branch '$INSTALL_BRANCH'..."
 else
-    echo "Installing Multi-Agent Worktree Manager (MAWT)..."
+    echo "Installing Multi-Agent Worktree Manager (MAWT) from branch '$INSTALL_BRANCH'..."
 fi
 
 # Detect OS
@@ -167,7 +185,7 @@ echo "Fetching latest version of MAWT..."
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-if git clone --depth 1 "$REPO_URL" "$TEMP_DIR" >/dev/null 2>&1; then
+if git clone --depth 1 --branch "$INSTALL_BRANCH" "$REPO_URL" "$TEMP_DIR" >/dev/null 2>&1; then
     echo "Repository cloned successfully."
     # Install binary
     cp "$TEMP_DIR/bin/mawt" "$BIN_DIR/mawt"
