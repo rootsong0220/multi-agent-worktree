@@ -9,7 +9,7 @@ $CONFIG_FILE = "$MAWT_ROOT\config"
 $WORKSPACE_DIR = "$HOME\workspace"
 $GITLAB_BASE_URL = "https://gitlab.com"
 $GITLAB_TOKEN = $null
-$GIT_PROTOCOL = "ssh"
+
 
 # Load Config
 if (Test-Path $CONFIG_FILE) {
@@ -170,9 +170,11 @@ function Ensure-Cloned {
     }
 
     # Determine URL
-    $cloneUrl = $RepoInfo.SshUrl
-    if ($GIT_PROTOCOL -eq "https") {
-        $cloneUrl = $RepoInfo.HttpUrl
+    # Default to HTTPS unless GIT_PROTOCOL is explicitly set to "ssh"
+    $cloneUrl = $RepoInfo.HttpUrl
+    if ($GIT_PROTOCOL -eq "ssh") {
+        $cloneUrl = $RepoInfo.SshUrl
+    } else {
         if ($GITLAB_TOKEN) {
             # Inject token: https://oauth2:TOKEN@gitlab.com/...
             $parts = $cloneUrl -split "://"
