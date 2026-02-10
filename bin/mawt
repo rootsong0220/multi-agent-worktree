@@ -67,7 +67,6 @@ cmd_init() {
             echo "Fetching projects from $GITLAB_BASE_URL..."
             
             # Fetch projects (membership=true gets projects the user is a member of)
-            # Use -w to get http code, write body to temp file
             RESP_FILE=$(mktemp)
             HTTP_CODE=$(curl --silent --write-out "%{http_code}" --output "$RESP_FILE" --header "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_BASE_URL/api/v4/projects?membership=true&simple=true&per_page=100&order_by=last_activity_at")
             
@@ -90,7 +89,6 @@ cmd_init() {
 
             # Parse projects using jq
             PROJECTS_FILE=$(mktemp)
-            # Use try-catch or safe navigation in jq to handle unexpected schemas
             echo "$RESPONSE" | jq -r '.[] | "\(.path_with_namespace)\t\(.ssh_url_to_repo)\t\(.http_url_to_repo)"' > "$PROJECTS_FILE"
             
             PROJECT_COUNT=$(wc -l < "$PROJECTS_FILE")
@@ -104,10 +102,12 @@ cmd_init() {
                 
                 # Use fzf if available for better selection, else select
                 if command -v fzf &> /dev/null; then
-                    SELECTED=$(cat "$PROJECTS_FILE" | awk -F'\t' '{print $1}' | fzf --prompt="Select Repository: " --height=20 --layout=reverse)
+                    # Allow fzf to exit with non-zero (e.g. abort) without killing script due to set -e
+                    SELECTED=$(cat "$PROJECTS_FILE" | awk -F'\t' '{print $1}' | fzf --prompt="Select Repository: " --height=20 --layout=reverse) || true
                 else
                     # Fallback to simple select
                     mapfile -t PROJECT_NAMES < <(awk -F'\t' '{print $1}' "$PROJECTS_FILE")
+                    echo "Select a project:"
                     select p in "${PROJECT_NAMES[@]}"; do
                         if [ -n "$p" ]; then
                             SELECTED="$p"
@@ -132,7 +132,7 @@ cmd_init() {
                     fi
                     echo "Selected: $SELECTED ($REPO_URL)"
                 else
-                    echo "No selection made."
+                    echo "No selection made or cancelled."
                     rm "$PROJECTS_FILE"
                     exit 1
                 fi
@@ -261,8 +261,16 @@ cmd_work() {
             exit 1
         fi
         
+        # Check if any directories exist to avoid error in ls/xargs
+        # Use find to list directories (maxdepth 1) and count them, or simpler glob check
+        if [ -z "$(ls -A "$WORKSPACE_DIR" 2>/dev/null)" ]; then
+            echo "No repositories found in $WORKSPACE_DIR. Run 'mawt init' first."
+            exit 1
+        fi
+
         # Capture directories into an array safely
-        mapfile -t repos < <(ls -d "$WORKSPACE_DIR"/*/ 2>/dev/null | xargs -n 1 basename)
+        # Ensure we only pick up directories
+        mapfile -t repos < <(find "$WORKSPACE_DIR" -mindepth 1 -maxdepth 1 -type d -printf "%f\n" 2>/dev/null)
         
         if [ ${#repos[@]} -eq 0 ]; then
             echo "No repositories found in $WORKSPACE_DIR. Run 'mawt init' first."
