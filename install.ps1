@@ -19,8 +19,8 @@ $MawtScriptPath = "$BinDir\mawt.ps1"
 if (Test-Path ".\bin\mawt.ps1") {
     Copy-Item ".\bin\mawt.ps1" -Destination $MawtScriptPath -Force
 } else {
-    # Production: Download from GitHub
-    $ScriptUrl = "https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/bin/mawt.ps1"
+    # Production: Download from GitHub (Feature Branch for testing)
+    $ScriptUrl = "https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/feature/windows-support/bin/mawt.ps1"
     Invoke-WebRequest -Uri $ScriptUrl -OutFile $MawtScriptPath
 }
 
