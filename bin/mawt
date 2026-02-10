@@ -156,7 +156,10 @@ ensure_cloned() {
     fi
 
     # Determine URL
-    if [ "$GIT_PROTOCOL" == "https" ]; then
+    # Default to HTTPS unless GIT_PROTOCOL is explicitly set to "ssh"
+    if [ "$GIT_PROTOCOL" == "ssh" ]; then
+        REPO_URL="$ssh_url"
+    else
         REPO_URL="$http_url"
         # Inject token if available for seamless auth
         if [ -n "$GITLAB_TOKEN" ]; then
@@ -166,8 +169,6 @@ ensure_cloned() {
              # Use "oauth2" as username for GitLab Token auth
              REPO_URL="${proto}://oauth2:${GITLAB_TOKEN}@${rest}"
         fi
-    else
-        REPO_URL="$ssh_url"
     fi
 
     # Mask token in logs
