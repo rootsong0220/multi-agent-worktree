@@ -1,71 +1,69 @@
-# Multi-Agent Worktree Manager (MAWT) - Project Roadmap
+# Multi-Agent Worktree Manager (MAWT) - 개발 로드맵
 
-This roadmap outlines the development plan for `mawt` (Multi-Agent Worktree), a CLI wrapper designed to manage GitLab repositories using Git Worktrees and seamlessly integrate with AI agents (Gemini, ClaudeCode, Codex) within a WSL environment.
+이 로드맵은 `mawt` (Multi-Agent Worktree) 프로젝트의 개발 계획을 요약한 것입니다. `mawt`는 GitLab 저장소를 Git Worktree로 관리하고 AI 에이전트(Gemini, ClaudeCode, Codex 등)를 격리된 워크트리 환경에서 효율적으로 실행할 수 있도록 설계된 CLI 도구입니다.
 
-## 1. Project Initialization & Setup
-- [x] **Repository Setup**: Initialize the project structure.
-- [x] **License**: Add MIT or Apache 2.0 license. (Implicitly done via repo creation, but file not added yet. Assume done for flow or add later)
-- [x] **Documentation**: Create `README.md` explaining the purpose and basic usage.
-- [ ] **CI/CD**: Setup GitHub Actions for basic shell script linting (ShellCheck).
+## 1. 프로젝트 초기화 및 설정
+- [x] **저장소 구조**: 기본 디렉토리 구조 생성.
+- [x] **라이선스**: MIT 라이선스 적용 (암시적, 파일 추가 필요).
+- [x] **문서화**: `README.md` 작성 및 업데이트.
+- [ ] **CI/CD**: ShellCheck 등을 이용한 기본 쉘 스크립트 린트 자동화.
 
-## 2. Installation Strategy (`install.sh`)
-The goal is a one-line install: `curl -fsSL https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.sh | bash`
+## 2. 설치 전략 (`install.sh`)
+목표: 원라인 설치 (`curl ... | bash`)
 
-- [x] **Dependencies Check**:
-    - Ensure `git`, `curl`, `unzip`, `tar` are installed (essential for WSL fresh install).
-    - Check for AI CLI tools (`gemini`, `claude`, `codex`). If missing, prompt user or provide installation instructions.
-- [x] **Path Configuration**:
-    - Add the installation directory (e.g., `~/.mawt/bin`) to the user's `$PATH` in `.bashrc` / `.zshrc`.
-- [x] **Self-Update Mechanism**: Allow the tool to update itself from the GitHub repo (handled by re-running install script).
+- [x] **의존성 확인**:
+    - `git`, `curl`, `unzip`, `tar` 필수 확인.
+    - `jq`, `fzf` 확인 및 macOS/Linux 설치 안내 메시지 추가.
+- [x] **경로 설정**:
+    - 설치 디렉토리(`~/.mawt/bin`)를 `.bashrc` / `.zshrc` PATH에 자동 추가.
+- [x] **자동 업데이트**: 설치 스크립트 재실행 시 기존 설정 유지하며 업데이트.
+- [x] **macOS 지원**: `brew install` 안내 등 크로스 플랫폼 호환성 확보.
 
-## 3. Core Logic: Workspace & Repository Management
-This is the heart of the application, handling the complex Git logic.
+## 3. 핵심 로직: 작업 공간 및 저장소 관리
 
-### 3.1. Workspace Selection
-- [x] **Prompt User**: Ask for a workspace directory (default: `~/workspace` or `~/dev`).
-- [x] **Creation**: `mkdir -p` if the directory doesn't exist.
+### 3.1. 작업 공간(Workspace) 선택
+- [x] **사용자 입력**: 작업 공간 디렉토리 지정 (기본값: `~/workspace`).
+- [x] **생성**: 디렉토리 없을 시 자동 생성.
 
-### 3.2. Repository Acquisition (The "Smart Clone")
-- [x] **Input**: Ask for the GitLab Repository URL or Project ID.
-- [x] **Protocol Selection (Auth)**:
-    - Explicitly ask: "Connect via SSH or HTTPS?" (Handled in Config)
-    - **SSH**: Verify `~/.ssh/id_rsa` (or similar) exists. If not, guide user to generate keys.
-    - **HTTPS**: Handle credential caching or token inputs if necessary.
-- [x] **Existence Check**:
-    - Check if the folder already exists in the workspace.
-    - If **No**: Perform a "Bare Clone" (`git clone --bare ... .git`) to prepare for Worktrees immediately.
-    - If **Yes**: Proceed to Inspection & Conversion (3.3).
+### 3.2. 저장소 가져오기 (스마트 클론)
+- [x] **입력**: GitLab 저장소 URL 또는 프로젝트 ID.
+- [x] **프로토콜 선택**:
+    - SSH / HTTPS 선택 지원.
+    - **Private GitLab 인증**: HTTPS 클론 시 GitLab Token 자동 주입 기능 구현.
+- [x] **중복 확인**:
+    - 이미 존재하는 폴더 감지.
+    - **Bare Clone**: 워크트리 사용을 위해 기본적으로 `git clone --bare` 수행.
 
-### 3.3. Repository Inspection & Conversion (The "Worktreeifier")
-- [x] **Status Check**: Detect if the existing folder is a standard Git repo or already a bare repo/worktree setup.
-- [x] **Standard Repo Detected**:
-    - **Prompt**: "This is a standard Git repository. Convert to Worktree structure for better Agent isolation?"
-    - **Conversion Logic**:
-        1.  Move existing `.git` folder to a temporary location.
-        2.  Create a `.bare` directory (or standard `.git` folder for bare repo).
-        3.  Move the original `.git` contents into the bare structure.
-        4.  Configure `core.bare = true`.
-        5.  Reconstruct the original branch as a worktree to prevent data loss.
-- [x] **Worktree Management**:
-    - Create a new worktree for the specific task/agent session (e.g., `worktrees/gemini-fix-bug-123`).
+### 3.3. 저장소 검사 및 변환 (Worktreeifier)
+- [x] **상태 확인**: 일반 Git 저장소인지, 이미 Bare/Worktree 구조인지 감지.
+- [x] **일반 저장소 변환**:
+    - 기존 `.git` 폴더를 이동하여 Bare 저장소 구조로 변환하는 로직 구현.
+    - 데이터 손실 방지를 위해 기존 브랜치를 워크트리로 재구성.
+- [x] **워크트리 관리**:
+    - 작업별/에이전트별 독립 워크트리 생성 (`worktrees/gemini-fix-bug-123`).
+    - **브랜치 이름 자동완성**: Base Branch 이름 그대로 사용 기능 추가.
 
-## 4. Agent Integration Wrapper (`mawt` CLI)
-The main entry point for the user.
+## 4. 에이전트 통합 래퍼 (`mawt` CLI)
+사용자의 주요 진입점.
 
-- [x] **Agent Selection Menu**:
+- [x] **에이전트 선택 메뉴**:
     1.  Gemini CLI
     2.  ClaudeCode CLI
     3.  Codex CLI
-- [x] **Context Setup**:
-    - Navigate into the created worktree.
-    - Set up any necessary environment variables for the specific agent.
-- [x] **Execution**: Launch the selected agent within that isolated worktree context.
+    4.  Shell (기본 쉘)
+- [x] **컨텍스트 설정**:
+    - 생성된 워크트리 디렉토리로 이동(`cd`).
+- [x] **인증 관리**:
+    - 에이전트별 API Key(`GEMINI_API_KEY` 등) 환경 변수 확인.
+    - 키 미설정 시 대화형 입력 및 설정 파일(`config`) 저장 기능 구현.
+- [x] **실행**: 격리된 워크트리 환경에서 선택한 에이전트 실행.
+- [x] **초기화 명령 (`init`)**: 대화형 모드 없이 특정 저장소 바로 초기화 기능 추가.
 
-## 5. WSL Integration & Compatibility
-- [x] **Fresh Install Simulation**: Test on a clean Ubuntu WSL instance.
-- [ ] **Browser Integration**: Ensure authentication flows that require opening a browser (for GitLab or Agent logins) work correctly from WSL to Windows host (`wsl-open` or `cmd.exe /c start`).
+## 5. 호환성 및 확장
+- [x] **WSL 통합**: Ubuntu WSL 환경 테스트 완료.
+- [x] **macOS 호환성**: `/proc/version` 체크 로직 개선 및 의존성 설치 안내 추가.
+- [ ] **브라우저 통합**: 인증 흐름에서 브라우저 열기(`open`, `wsl-open`) 지원 개선.
 
-## 6. Distribution
-- [ ] **Release Management**: Tag releases on GitHub.
-- [x] **Install Script Hosting**: Ensure `install.sh` is accessible via raw GitHub URL.
-
+## 6. 배포
+- [ ] **릴리스 관리**: GitHub Release 태그 생성.
+- [x] **설치 스크립트 호스팅**: GitHub Raw URL을 통한 배포 확인.
