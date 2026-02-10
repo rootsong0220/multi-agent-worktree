@@ -18,7 +18,10 @@ MAWT simplifies the workflow of using multiple AI agents on the same codebase wi
 
 ## Installation & Updates
 
-To install or update **mawt**, run the following command in your terminal:
+To install or update **mawt**, run the following command in your terminal. This script will:
+1.  Check for dependencies (`git`, `curl`, `jq`, etc.).
+2.  Clone the latest version of `mawt` directly from GitHub.
+3.  Guide you through the configuration setup.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.sh | bash

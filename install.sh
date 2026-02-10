@@ -3,10 +3,9 @@ set -e
 
 # Multi-Agent Worktree (MAWT) Installer
 
-REPO_URL="https://github.com/rootsong0220/multi-agent-worktree"
+REPO_URL="https://github.com/rootsong0220/multi-agent-worktree.git"
 INSTALL_DIR="$HOME/.mawt"
 BIN_DIR="$INSTALL_DIR/bin"
-MAWT_SCRIPT_URL="https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/bin/mawt"
 CONFIG_FILE="$INSTALL_DIR/config"
 
 if [ -f "$BIN_DIR/mawt" ]; then
@@ -28,23 +27,28 @@ done
 # 2. Create Installation Directory
 mkdir -p "$BIN_DIR"
 
-# 3. Download MAWT Script
-echo "Downloading mawt CLI..."
-# For now, we are simulating the download from the repo we are building.
-# In a real scenario, we would download from the raw URL of the main branch.
-# Since we are developing locally, we will just copy if the file exists locally, otherwise curl with retry.
-if [ -f "bin/mawt" ]; then
-    cp bin/mawt "$BIN_DIR/mawt"
+# 3. Download/Update MAWT via Git Clone (More Robust than curl raw)
+echo "Fetching latest version..."
+TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TEMP_DIR"' EXIT
+
+if git clone --depth 1 "$REPO_URL" "$TEMP_DIR" >/dev/null 2>&1; then
+    echo "Repository cloned successfully."
+    # Install binary
+    cp "$TEMP_DIR/bin/mawt" "$BIN_DIR/mawt"
+    chmod +x "$BIN_DIR/mawt"
+    echo "Updated $BIN_DIR/mawt"
 else
-    # Retry logic: 3 attempts with 2-second delay
-    if ! curl -fsSL --retry 3 --retry-delay 2 "$MAWT_SCRIPT_URL" -o "$BIN_DIR/mawt"; then
-        echo "Error: Failed to download mawt CLI from GitHub."
-        echo "Please check your internet connection or try again later."
+    echo "Error: Failed to clone repository."
+    echo "Trying fallback to curl..."
+    # Fallback to curl if git fails (e.g. firewall blocking git protocol but not https)
+    MAWT_SCRIPT_URL="https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/bin/mawt"
+    if ! curl -fsSL -4 --retry 3 --retry-delay 2 "$MAWT_SCRIPT_URL" -o "$BIN_DIR/mawt"; then
+        echo "Error: Failed to download mawt CLI."
         exit 1
     fi
+    chmod +x "$BIN_DIR/mawt"
 fi
-
-chmod +x "$BIN_DIR/mawt"
 
 # 4. Add to PATH
 SHELL_CONFIG=""
