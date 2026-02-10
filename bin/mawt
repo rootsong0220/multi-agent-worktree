@@ -1,0 +1,219 @@
+#!/bin/bash
+
+# MAWT: Multi-Agent Worktree Manager
+# Usage: mawt <command> [args]
+
+set -e
+
+MAWT_ROOT="$HOME/.mawt"
+WORKSPACE_DIR="$HOME/workspace" # Default workspace directory
+
+check_deps() {
+    local deps=("git" "fzf")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            echo "Error: '$dep' is required but not installed."
+            exit 1
+        fi
+    done
+}
+
+# Helper: Detect WSL
+is_wsl() {
+    if grep -q Microsoft /proc/version; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Command: Init (Clone Repo as Bare for Worktrees)
+cmd_init() {
+    local repo_url="$1"
+    if [ -z "$repo_url" ]; then
+        echo "Usage: mawt init <repo_url>"
+        exit 1
+    fi
+
+    # Determine protocol (SSH vs HTTPS)
+    if [[ "$repo_url" == git@* ]]; then
+        PROTOCOL="ssh"
+    elif [[ "$repo_url" == https://* ]]; then
+        PROTOCOL="https"
+    else
+        echo "Invalid repository URL. Must start with git@ or https://"
+        exit 1
+    fi
+
+    # Extract repo name
+    local repo_name=$(basename "$repo_url" .git)
+    local target_dir="$WORKSPACE_DIR/$repo_name"
+
+    if [ -d "$target_dir" ]; then
+        echo "Directory '$target_dir' already exists."
+        # Check if it's a bare repo or standard repo
+        if [ -f "$target_dir/config" ] && grep -q "bare = true" "$target_dir/config"; then
+            echo "It appears to be a bare repository (good for worktrees)."
+            exit 0
+        elif [ -d "$target_dir/.git" ]; then
+            echo "Standard Git repository detected."
+            read -p "Do you want to convert this to a Worktree-managed structure? (y/N) " confirm
+            if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                cmd_convert "$target_dir"
+            else
+                echo "Skipping conversion. Use 'mawt convert' later if needed."
+            fi
+            exit 0
+        else
+            echo "Directory exists but is not a valid Git repository."
+            exit 1
+        fi
+    fi
+
+    echo "Cloning '$repo_name' as a bare repository into '$target_dir'..."
+    mkdir -p "$target_dir"
+    git clone --bare "$repo_url" "$target_dir/.bare"
+    
+    # Create a default 'main' worktree
+    echo "Creating default worktree 'main'..."
+    cd "$target_dir/.bare"
+    git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+    if git rev-parse --verify main >/dev/null 2>&1; then
+        git worktree add "$target_dir/main" main
+    elif git rev-parse --verify master >/dev/null 2>&1; then
+        git worktree add "$target_dir/main" master
+    else
+        echo "Warning: Could not determine default branch (main/master). You may need to create a worktree manually."
+    fi
+
+    echo "Repository initialized for worktree management!"
+    echo "Location: $target_dir"
+}
+
+# Command: Convert Standard Repo to Bare/Worktree Setup
+cmd_convert() {
+    local repo_path="$1"
+    
+    if [ ! -d "$repo_path/.git" ]; then
+        echo "Error: '$repo_path' is not a standard Git repository."
+        exit 1
+    fi
+
+    read -p "Convert '$repo_path' to Worktree structure? This will move the .git folder and create a worktree for the current branch. (y/N) " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        echo "Aborted."
+        exit 0
+    fi
+
+    echo "Converting..."
+    # 1. Move .git to .bare
+    mv "$repo_path/.git" "$repo_path/.bare"
+    
+    # 2. Configure bare repo
+    cd "$repo_path/.bare"
+    git config --bool core.bare true
+    
+    # 3. Create worktree for current checkout
+    # We need to know which branch was checked out. Assuming 'main' or 'master' for simplicity or asking user.
+    # For now, let's just create a 'main' worktree from HEAD.
+    branch_name=$(git symbolic-ref --short HEAD)
+    echo "Detected current branch: $branch_name"
+    
+    cd ..
+    mkdir -p "$branch_name"
+    cd ".bare"
+    git worktree add "../$branch_name" "$branch_name"
+    
+    echo "Conversion complete! Original repo is now at '$repo_path/.bare' and worktree at '$repo_path/$branch_name'."
+}
+
+# Command: Work (Create Worktree & Launch Agent)
+cmd_work() {
+    local repo_name="$1"
+    local agent="$2"
+    local task_name="$3"
+
+    if [ -z "$repo_name" ] || [ -z "$agent" ]; then
+        echo "Usage: mawt work <repo_name> <agent> [task_name]"
+        echo "Agents: gemini, claude, codex"
+        exit 1
+    fi
+
+    local repo_dir="$WORKSPACE_DIR/$repo_name"
+    if [ ! -d "$repo_dir/.bare" ]; then
+        echo "Error: Repository '$repo_name' not initialized for worktrees."
+        echo "Run 'mawt init <url>' first."
+        exit 1
+    fi
+
+    if [ -z "$task_name" ]; then
+        read -p "Enter a name for this task/worktree (e.g., fix-bug-123): " task_name
+    fi
+
+    local worktree_path="$repo_dir/$task_name"
+    
+    if [ -d "$worktree_path" ]; then
+        echo "Worktree '$task_name' already exists. Switching to it..."
+    else
+        echo "Creating worktree '$task_name'..."
+        cd "$repo_dir/.bare"
+        git worktree add "$worktree_path" -b "feat/$task_name"
+    fi
+
+    echo "Launching $agent in $worktree_path..."
+    cd "$worktree_path"
+
+    case "$agent" in
+        gemini)
+            if command -v gemini &> /dev/null; then
+                gemini
+            else
+                echo "Gemini CLI not found."
+            fi
+            ;;
+        claude)
+            if command -v claude &> /dev/null; then
+                claude
+            else
+                echo "Claude CLI not found."
+            fi
+            ;;
+        codex)
+            if command -v codex &> /dev/null; then
+                codex
+            else
+                echo "Codex CLI not found."
+            fi
+            ;;
+        *)
+            echo "Unknown agent: $agent"
+            exit 1
+            ;;
+    esac
+}
+
+# Main Dispatch
+case "$1" in
+    init)
+        shift
+        cmd_init "$@"
+        ;;
+    work)
+        shift
+        cmd_work "$@"
+        ;;
+    help|--help|-h)
+        echo "Usage: mawt <command> [args]"
+        echo ""
+        echo "Commands:"
+        echo "  init <url>               Initialize a repo for worktree usage (bare clone)"
+        echo "  work <repo> <agent> [task] Create worktree & run agent"
+        echo "  list                     List managed repositories"
+        echo "  help                     Show this help"
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Run 'mawt help' for usage."
+        exit 1
+        ;;
+esac
