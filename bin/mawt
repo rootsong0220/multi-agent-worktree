@@ -38,6 +38,8 @@ is_wsl() {
 # 1. Repository Selection (Remote + Local)
 # ------------------------------------------------------------------
 select_repository() {
+    local target_repo="$1"
+
     echo "Fetching project list from GitLab ($GITLAB_BASE_URL)..."
     
     if [ -z "$GITLAB_TOKEN" ]; then
@@ -78,9 +80,19 @@ select_repository() {
         fi
     done < "$PROJECTS_FILE"
 
-    # FZF Selection
-    echo "Select a repository to work on:"
-    SELECTED_LINE=$(cat "$DISPLAY_FILE" | fzf --prompt="Repo> " --height=40% --layout=reverse) || true
+    if [ -n "$target_repo" ]; then
+        # Direct match for 'init' command
+        SELECTED_LINE=$(grep "[[:space:]]${target_repo}$" "$DISPLAY_FILE" | head -n 1)
+        if [ -z "$SELECTED_LINE" ]; then
+            echo "Error: Repository '$target_repo' not found in fetched list."
+            rm "$PROJECTS_FILE" "$DISPLAY_FILE"
+            exit 1
+        fi
+    else
+        # FZF Selection
+        echo "Select a repository to work on:"
+        SELECTED_LINE=$(cat "$DISPLAY_FILE" | fzf --prompt="Repo> " --height=40% --layout=reverse) || true
+    fi
 
     if [ -z "$SELECTED_LINE" ]; then
         echo "No repository selected."
@@ -93,7 +105,7 @@ select_repository() {
     SELECTED_PATH=$(echo "$SELECTED_LINE" | awk '{print $2}')
     
     # Get URLs from PROJECTS_FILE
-    REPO_INFO=$(grep "^${SELECTED_PATH}\t" "$PROJECTS_FILE")
+    REPO_INFO=$(grep "^${SELECTED_PATH}[[:space:]]" "$PROJECTS_FILE")
     SSH_URL=$(echo "$REPO_INFO" | awk -F'\t' '{print $2}')
     HTTP_URL=$(echo "$REPO_INFO" | awk -F'\t' '{print $3}')
 
@@ -122,6 +134,9 @@ ensure_cloned() {
             return 0 # Already set up
         elif [ -d "$target_dir/.git" ]; then
             echo "Standard repository detected at $target_dir."
+            # Only ask interactive confirmation if not in batch/init mode? 
+            # For now, keep asking. But 'init' might fail non-interactive here.
+            # Assuming 'init' is interactive or just prompts.
             read -p "Convert to Worktree structure? (y/N) " confirm
             if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
                 cmd_convert "$target_dir"
@@ -310,6 +325,14 @@ cmd_uninstall() {
 check_deps
 
 case "$1" in
+    init)
+        if [ -z "$2" ]; then
+            echo "Usage: mawt init <group/project>"
+            exit 1
+        fi
+        select_repository "$2"
+        ensure_cloned "$SEL_REPO_NAME" "$SEL_SSH_URL" "$SEL_HTTP_URL"
+        ;;
     list)
         cmd_list
         ;;
@@ -319,12 +342,13 @@ case "$1" in
     help|--help|-h)
         echo "Usage: mawt"
         echo "  (No args)  Start interactive workflow (Select Repo -> Worktree -> Agent)"
+        echo "  init <repo> Initialize a specific repository (e.g., mawt init group/project)"
         echo "  list       List managed repositories"
         echo "  uninstall  Remove MAWT"
         ;;
     *)
         # Default Flow
-        select_repository
+        select_repository ""
         ensure_cloned "$SEL_REPO_NAME" "$SEL_SSH_URL" "$SEL_HTTP_URL"
         select_worktree_action "$WORKSPACE_DIR/$SEL_REPO_NAME"
         launch_agent "$TARGET_WORKTREE"
