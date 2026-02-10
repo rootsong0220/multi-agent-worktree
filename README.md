@@ -42,16 +42,26 @@ source ~/.zshrc
 또는 터미널을 재시작하면 됩니다.
 
 ### Windows (PowerShell)
-PowerShell 터미널을 열고 아래 명령어를 실행하세요:
+PowerShell 터미널을 열고 아래 명령어를 실행하여 **mawt**를 설치하거나 업데이트할 수 있습니다. 특정 브랜치에서 설치하려면 `-Branch` 인수를 사용하세요 (예: `-Branch feature/windows-support`).
+
+**경고**: 아래 명령어는 현재 PowerShell 세션에만 스크립트 실행 정책을 일시적으로 우회합니다 (`Set-ExecutionPolicy Bypass -Scope Process`). 이는 신뢰할 수 있는 스크립트(MAWT)를 실행하기 위함이며, 보안에 유의하세요.
 
 ```powershell
-irm https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.ps1 | iex
+# 'main' 브랜치에서 설치/업데이트 (기본값)
+Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.ps1 | iex
+
+# 'feature/windows-support' 브랜치에서 설치/업데이트 (예시)
+# Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/feature/windows-support/install.ps1 | iex -ArgumentList '-Branch', 'feature/windows-support'
 ```
 
 만약 **Command Prompt (cmd)**를 사용 중이라면 아래 명령어를 복사해 실행하세요:
 
 ```cmd
+# 'main' 브랜치에서 설치/업데이트 (기본값)
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.ps1 | iex"
+
+# 'feature/windows-support' 브랜치에서 설치/업데이트 (예시)
+# powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/feature/windows-support/install.ps1 | iex -ArgumentList '-Branch', 'feature/windows-support'"
 ```
 
 설치 후 터미널을 재시작하면 `mawt` 명령어를 사용할 수 있습니다.
