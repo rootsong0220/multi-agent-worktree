@@ -113,10 +113,7 @@ if (Test-Path $MawtScriptPath) {
 }
 
 # Create a wrapper batch file for easy execution in cmd/powershell as 'mawt'
-$BatchContent = @"
-@echo off
-powershell -ExecutionPolicy Bypass -File "%~dp0mawt.ps1" %*
-"@
+$BatchContent = "@echo off`r`npowershell -ExecutionPolicy Bypass -File `"%~dp0mawt.ps1`" %*"
 Set-Content -Path "$BinDir\mawt.cmd" -Value $BatchContent
 Write-Host "'mawt.cmd' wrapper created at $BinDir" -ForegroundColor Green
 
