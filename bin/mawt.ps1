@@ -230,16 +230,28 @@ function Convert-ToWorktree {
     if ($LASTEXITCODE -ne 0) {
         if ($output -match "already exists") {
             $registered = $false
+            $repoFull = (Resolve-Path $RepoPath).Path
             $wtLines = git -C (Join-Path $RepoPath ".bare") worktree list --porcelain | Select-String -Pattern "^worktree\s+"
             foreach ($line in $wtLines) {
                 $path = ($line -replace "^worktree\s+", "").Trim()
-                if ($path -eq $RepoPath) { $registered = $true; break }
+                $path = $path -replace "/", "\\"
+                try {
+                    $pathFull = (Resolve-Path $path).Path
+                } catch {
+                    $pathFull = $path
+                }
+                if ($pathFull -ieq $repoFull) { $registered = $true; break }
             }
             if (-not $registered) {
                 Write-Host "Detected existing path without worktree registration. Backing up and retrying..." -ForegroundColor Yellow
                 $backupDir = "${RepoPath}._backup_$(Get-Date -Format yyyyMMddHHmmss)"
                 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-                Get-ChildItem $RepoPath -Force | Where-Object { $_.Name -ne ".bare" } | Move-Item -Destination $backupDir
+                Get-ChildItem $RepoPath -Force | Where-Object { $_.Name -ne ".bare" } | Move-Item -Destination $backupDir -ErrorAction SilentlyContinue
+                $leftovers = Get-ChildItem $RepoPath -Force | Where-Object { $_.Name -ne ".bare" }
+                if ($leftovers) {
+                    Write-Host "Cleaning remaining files before retry..." -ForegroundColor Yellow
+                    $leftovers | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+                }
                 $output = git -C (Join-Path $RepoPath ".bare") @args 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "Retry succeeded. Backup at: $backupDir" -ForegroundColor Green
