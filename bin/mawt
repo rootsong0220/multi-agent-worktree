@@ -38,6 +38,28 @@ is_wsl() {
     fi
 }
 
+# Best-effort browser opener for Gemini OAuth
+ensure_gemini_browser_opener() {
+    if [ "$GEMINI_AUTH_MODE" != "oauth" ]; then
+        return 0
+    fi
+    if [ -n "$BROWSER" ]; then
+        return 0
+    fi
+    if is_wsl && command -v wslview &> /dev/null; then
+        export BROWSER="wslview"
+        return 0
+    fi
+    if command -v xdg-open &> /dev/null; then
+        export BROWSER="xdg-open"
+        return 0
+    fi
+    if command -v open &> /dev/null; then
+        export BROWSER="open"
+        return 0
+    fi
+}
+
 # ------------------------------------------------------------------
 # 1. Repository Selection (Remote + Local)
 # ------------------------------------------------------------------
@@ -369,6 +391,7 @@ launch_agent() {
             echo "Select Gemini Model:"
             selected_model=$(printf "%s\n" "${models[@]}" | fzf --prompt="Model> " --height=10 --layout=reverse) || true
             if [ -n "$selected_model" ]; then AGENT_ARGS+=("--model" "$selected_model"); fi
+            ensure_gemini_browser_opener
             ;;
         claude)
             local models=("claude-opus-4-6" "claude-sonnet-4-5-20250929") # 업데이트된 Claude 모델 목록

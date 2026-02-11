@@ -407,6 +407,7 @@ function Launch-Agent {
             $models = @("gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro") # 업데이트된 Gemini 모델 목록
             $selectedModel = Select-Item -Items $models -PromptText "Select Gemini Model"
             if ($selectedModel) { $agentArgs += "--model"; $agentArgs += "$selectedModel" }
+            Ensure-GeminiBrowserOpener
         }
         "claude" {
             $models = @("claude-opus-4-6", "claude-sonnet-4-5-20250929") # 업데이트된 Claude 모델 목록
@@ -476,6 +477,24 @@ function Check-Auth {
             Add-Content -Path $CONFIG_FILE -Value "`n$keyVar=`"$plainKey`""
             Write-Host "Key saved to config."
         }
+    }
+}
+
+function Ensure-GeminiBrowserOpener {
+    if ($env:GEMINI_AUTH_MODE -ne "oauth") { return }
+    if ($env:BROWSER) { return }
+
+    if ($env:WSL_DISTRO_NAME -and (Get-Command wslview -ErrorAction SilentlyContinue)) {
+        $env:BROWSER = "wslview"
+        return
+    }
+    if (Get-Command xdg-open -ErrorAction SilentlyContinue) {
+        $env:BROWSER = "xdg-open"
+        return
+    }
+    if (Get-Command open -ErrorAction SilentlyContinue) {
+        $env:BROWSER = "open"
+        return
     }
 }
 
