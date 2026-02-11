@@ -1,4 +1,6 @@
 # MAWT Installer for Windows (PowerShell)
+[CmdletBinding()]
+param()
 
 $ErrorActionPreference = "Stop"
 
@@ -59,7 +61,7 @@ Write-Host "MAWT binaries directory set to: $BinDir" -ForegroundColor DarkGray
 $MawtScriptPath = "$BinDir\mawt.ps1"
 $ScriptUrl = "https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/$InstallBranch/bin/mawt.ps1?_=$([System.DateTimeOffset]::Now.ToUnixTimeMilliseconds())"
 Write-Host "Downloading mawt.ps1 from branch '$InstallBranch' on GitHub..." -ForegroundColor Cyan
-Write-Host "Targeting: $MawtScriptPath" -ForegroundColor DarkGray
+Write-Verbose "Targeting: $MawtScriptPath"
 
 $mawtScriptFoundLocally = $false
 $currentScriptDir = $null
@@ -108,8 +110,10 @@ if (-not $mawtScriptFoundLocally) {
 
 if (Test-Path $MawtScriptPath) {
     Write-Host "MAWT script setup complete." -ForegroundColor Green # Changed message
-    Write-Host "Verifying mawt.ps1 content (first 8 lines from $MawtScriptPath):" -ForegroundColor DarkGray # Changed message
-    (Get-Content -Path $MawtScriptPath -TotalCount 8) | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+    Write-Verbose "Verifying mawt.ps1 content (first 8 lines from $MawtScriptPath):"
+    if ($PSBoundParameters.ContainsKey('Verbose')) {
+        (Get-Content -Path $MawtScriptPath -TotalCount 8) | ForEach-Object { Write-Verbose "  $_" }
+    }
 } else {
     Write-Error "Error: mawt.ps1 not found at $MawtScriptPath after setup attempts." -ForegroundColor Red # Changed message
     exit 1

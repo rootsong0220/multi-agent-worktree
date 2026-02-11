@@ -9,6 +9,7 @@ BIN_DIR="$INSTALL_DIR/bin"
 CONFIG_FILE="$INSTALL_DIR/config"
 
 INSTALL_BRANCH="main" # Default branch
+VERBOSE=0
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -18,6 +19,10 @@ while [[ $# -gt 0 ]]; do
             INSTALL_BRANCH="$2"
             shift # past argument
             shift # past value
+            ;;
+        -v|--verbose)
+            VERBOSE=1
+            shift
             ;;
         *)
             # Unknown option or positional argument
@@ -43,6 +48,12 @@ case "$OS_TYPE" in
 esac
 
 echo "Detected OS: $OS_NAME"
+
+logv() {
+    if [ "$VERBOSE" -eq 1 ]; then
+        echo "$@"
+    fi
+}
 
 # Function to install system packages
 install_sys_pkg() {
@@ -200,6 +211,11 @@ else
         exit 1
     fi
     chmod +x "$BIN_DIR/mawt"
+fi
+
+if [ "$VERBOSE" -eq 1 ] && [ -f "$BIN_DIR/mawt" ]; then
+    logv "Verifying mawt content (first 8 lines from $BIN_DIR/mawt):"
+    head -n 8 "$BIN_DIR/mawt" | sed 's/^/  /'
 fi
 
 # 5. Add to PATH

@@ -30,6 +30,11 @@ MAWT(Multi-Agent Worktree Manager)는 Git Worktree를 활용하여 GitLab 저장
 curl -fsSL https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.sh | bash
 ```
 
+추가 로그(자세한 검증 출력)가 필요하면 `-v`/`--verbose`를 사용하세요:
+```bash
+curl -fsSL https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.sh | bash -s -- -v
+```
+
 **설치 후 적용:**
 현재 터미널 세션에서 바로 사용하려면 다음을 실행하세요:
 ```bash
@@ -65,6 +70,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$installer = Join-Path $
 ```
 
 설치 후 터미널을 재시작하면 `mawt` 명령어를 사용할 수 있습니다.
+
+추가 로그(자세한 검증 출력)가 필요하면 `-Verbose`를 사용하세요:
+```powershell
+# PowerShell
+Set-ExecutionPolicy Bypass -Scope Process -Force; $installer = Join-Path $env:TEMP "mawt-install.ps1"; iwr https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.ps1 -UseBasicParsing -OutFile $installer; & $installer -Verbose; Remove-Item $installer -ErrorAction SilentlyContinue
+```
 
 ### 초기 설정
 첫 설치 시, 다음과 같은 설정을 대화형으로 진행합니다:
