@@ -517,6 +517,35 @@ cmd_uninstall() {
     fi
 }
 
+cmd_status() {
+    echo "Worktree Status in $WORKSPACE_DIR:"
+    if [ ! -d "$WORKSPACE_DIR" ] || [ -z "$(ls -A "$WORKSPACE_DIR" 2>/dev/null)" ]; then
+        echo "  No repositories found."
+        return
+    fi
+
+    for repo in "$WORKSPACE_DIR"/*; do
+        if [ -d "$repo/.bare" ]; then
+            local repo_name
+            repo_name=$(basename "$repo")
+            echo "- $repo_name"
+            git -C "$repo/.bare" worktree list --porcelain | awk '
+                $1=="worktree"{path=$2}
+                $1=="branch"{branch=$2}
+                $1=="locked"{locked=$0}
+                $1=="prunable"{prunable=$0}
+                $1=="HEAD"{head=$2}
+                $0==""{
+                    print "    - " (branch?branch:"(detached)") " (" path ")"
+                    if (locked) print "      " locked
+                    if (prunable) print "      " prunable
+                    path=branch=locked=prunable=head=""
+                }
+            '
+        fi
+    done
+}
+
 # ------------------------------------------------------------------
 # Main Dispatch
 # ------------------------------------------------------------------
@@ -534,6 +563,9 @@ case "$1" in
     list)
         cmd_list
         ;;
+    status)
+        cmd_status
+        ;;
     uninstall)
         cmd_uninstall
         ;;
@@ -542,6 +574,7 @@ case "$1" in
         echo "  (No args)  Start interactive workflow (Select Repo -> Worktree -> Agent)"
         echo "  init <repo> Initialize a specific repository (e.g., mawt init group/project)"
         echo "  list       List managed repositories"
+        echo "  status     Show worktree status across repositories"
         echo "  uninstall  Remove MAWT"
         ;;
     *)

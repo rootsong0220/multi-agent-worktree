@@ -552,6 +552,45 @@ function Ensure-GeminiBrowserOpener {
     }
 }
 
+function Show-WorktreeStatus {
+    Write-Host "Worktree Status in ${WORKSPACE_DIR}:"
+    if (-not (Test-Path $WORKSPACE_DIR)) {
+        Write-Host "  No repositories found."
+        return
+    }
+
+    Get-ChildItem $WORKSPACE_DIR | ForEach-Object {
+        if (Test-Path (Join-Path $_.FullName ".bare")) {
+            Write-Host "- $($_.Name)" -ForegroundColor Cyan
+            $bareDir = Join-Path $_.FullName ".bare"
+            $lines = git -C $bareDir worktree list --porcelain
+            $entry = @{}
+            foreach ($line in $lines) {
+                if ($line -eq "") {
+                    if ($entry.path) {
+                        $branch = if ($entry.branch) { $entry.branch } else { "(detached)" }
+                        Write-Host "    - $branch ($($entry.path))"
+                        if ($entry.locked) { Write-Host "      $($entry.locked)" }
+                        if ($entry.prunable) { Write-Host "      $($entry.prunable)" }
+                    }
+                    $entry = @{}
+                    continue
+                }
+                if ($line -match "^worktree\s+(.+)$") { $entry.path = $matches[1] }
+                elseif ($line -match "^branch\s+(.+)$") { $entry.branch = $matches[1] }
+                elseif ($line -match "^locked") { $entry.locked = $line }
+                elseif ($line -match "^prunable") { $entry.prunable = $line }
+            }
+            if ($entry.path) {
+                $branch = if ($entry.branch) { $entry.branch } else { "(detached)" }
+                Write-Host "    - $branch ($($entry.path))"
+                if ($entry.locked) { Write-Host "      $($entry.locked)" }
+                if ($entry.prunable) { Write-Host "      $($entry.prunable)" }
+            }
+        }
+    }
+}
+
 # Main Dispatch
 Check-Deps
 
@@ -575,6 +614,9 @@ switch ($command) {
             }
         }
     }
+    "status" {
+        Show-WorktreeStatus
+    }
     "uninstall" {
         $confirm = Read-Host "Uninstall MAWT? (yes/no)"
         if ($confirm -eq "yes") {
@@ -587,6 +629,7 @@ switch ($command) {
         Write-Host "  (No args)  Start interactive workflow"
         Write-Host "  init <repo> Initialize repository"
         Write-Host "  list       List repositories"
+        Write-Host "  status     Show worktree status across repositories"
         Write-Host "  uninstall  Remove MAWT"
     }
     Default {
