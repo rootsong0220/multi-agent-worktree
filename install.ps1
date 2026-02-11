@@ -173,14 +173,32 @@ Check-AiCli -ToolCommand "claude" -NpmPackage "@anthropic-ai/claude-code"
 Check-AiCli -ToolCommand "codex" -NpmPackage "@openai/codex"
 
 # 3. Add to PATH (Previous step 3, now moved after CLI checks)
-$CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if ($CurrentPath -notlike "*$BinDir*") {
-    Write-Host "Adding $BinDir to User PATH..." -ForegroundColor Cyan
-    $pathValue = "$CurrentPath;$BinDir"
-    [Environment]::SetEnvironmentVariable("Path", $pathValue, "User")
+# Set MAWT_NO_PATH=1 to skip automatic PATH changes (policy-sensitive environments).
+if (-not $Env:MAWT_NO_PATH) {
+    $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $pathsToAdd = @($BinDir)
+
+    # Ensure npm global bin directory is discoverable (e.g., gemini/claude/codex)
+    try {
+        $npmPrefix = (npm prefix -g 2>$null).Trim()
+        if ($npmPrefix) {
+            $pathsToAdd += $npmPrefix
+        }
+    } catch {
+        # ignore npm prefix detection errors
+    }
+
+    foreach ($p in $pathsToAdd | Select-Object -Unique) {
+        if ($CurrentPath -notlike "*$p*") {
+            Write-Host "Adding $p to User PATH..." -ForegroundColor Cyan
+            $CurrentPath = "$CurrentPath;$p"
+        }
+    }
+
+    [Environment]::SetEnvironmentVariable("Path", $CurrentPath, "User")
     Write-Host "Path updated. You may need to restart your terminal." -ForegroundColor Yellow
 } else {
-    Write-Host "Path already configured." -ForegroundColor DarkGray
+    Write-Host "Skipping PATH update because MAWT_NO_PATH is set." -ForegroundColor DarkGray
 }
 
 # 4. Configuration (Previous step 4, now moved after Path config)
