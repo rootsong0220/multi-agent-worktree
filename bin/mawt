@@ -427,14 +427,32 @@ launch_agent() {
 cmd_convert() {
     local repo_path="$1"
     echo "Converting '$repo_path'..."
+    if [ ! -d "$repo_path/.git" ]; then
+        echo "Error: Not a standard git repo (no .git found)."
+        return 1
+    fi
+    if [ -n "$(git -C "$repo_path" status --porcelain)" ]; then
+        echo "Error: Working tree has uncommitted changes."
+        echo "Please commit or stash before converting."
+        return 1
+    fi
+
+    local branch_name=""
+    local target_ref=""
+    local detach_flag=""
+    branch_name=$(git -C "$repo_path" symbolic-ref --quiet --short HEAD || true)
+    if [ -n "$branch_name" ]; then
+        target_ref="$branch_name"
+    else
+        target_ref=$(git -C "$repo_path" rev-parse --verify HEAD)
+        detach_flag="--detach"
+    fi
+
     mv "$repo_path/.git" "$repo_path/.bare"
-    cd "$repo_path/.bare"
-    git config --bool core.bare true
-    local branch_name=$(git symbolic-ref --short HEAD)
-    cd ..
-    mkdir -p "$branch_name"
-    cd ".bare"
-    git worktree add "../$branch_name" "$branch_name"
+    git -C "$repo_path/.bare" config --bool core.bare true
+
+    # Register the existing working directory as a worktree.
+    git -C "$repo_path/.bare" worktree add -f $detach_flag "$repo_path" "$target_ref"
     echo "Converted."
 }
 

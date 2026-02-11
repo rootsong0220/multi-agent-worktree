@@ -196,19 +196,33 @@ function Ensure-Cloned {
 function Convert-ToWorktree {
     param ($RepoPath)
     Write-Host "Converting '$RepoPath'..."
+    if (-not (Test-Path (Join-Path $RepoPath ".git"))) {
+        Write-Error "Not a standard git repo (no .git found)."
+        return
+    }
+
+    $status = git -C $RepoPath status --porcelain
+    if ($status) {
+        Write-Error "Working tree has uncommitted changes. Please commit or stash before converting."
+        return
+    }
+
+    $branchName = (git -C $RepoPath symbolic-ref --quiet --short HEAD 2>$null)
+    $targetRef = $branchName
+    $detachFlag = $null
+    if (-not $branchName) {
+        $targetRef = git -C $RepoPath rev-parse --verify HEAD
+        $detachFlag = "--detach"
+    }
+
     Move-Item (Join-Path $RepoPath ".git") (Join-Path $RepoPath ".bare")
-    
-    Push-Location (Join-Path $RepoPath ".bare")
-    git config --bool core.bare true
-    $branchName = git symbolic-ref --short HEAD
-    Pop-Location
-    
-    New-Item -ItemType Directory -Force -Path (Join-Path $RepoPath $branchName) | Out-Null
-    
-    Push-Location (Join-Path $RepoPath ".bare")
-    git worktree add "../$branchName" "$branchName"
-    Pop-Location
-    
+    git -C (Join-Path $RepoPath ".bare") config --bool core.bare true
+
+    $args = @("worktree", "add", "-f")
+    if ($detachFlag) { $args += $detachFlag }
+    $args += @($RepoPath, $targetRef)
+    git -C (Join-Path $RepoPath ".bare") @args
+
     Write-Host "Converted." -ForegroundColor Green
 }
 
