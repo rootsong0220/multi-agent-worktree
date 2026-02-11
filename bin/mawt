@@ -485,9 +485,25 @@ cmd_convert() {
     git -C "$repo_path/.bare" config --bool core.bare true
 
     # Register the existing working directory as a worktree.
-    git -C "$repo_path/.bare" worktree add -f $detach_flag "$repo_path" "$target_ref"
+    local wt_output=""
+    wt_output=$(git -C "$repo_path/.bare" worktree add -f $detach_flag "$repo_path" "$target_ref" 2>&1)
+    if [ $? -ne 0 ]; then
+        echo "Error: git worktree add failed."
+        echo "$wt_output"
+        echo "Rolling back conversion..."
+        if [ -f "$repo_path/.git" ]; then rm -f "$repo_path/.git"; fi
+        if [ ! -d "$repo_path/.git" ] && [ -d "$repo_path/.bare" ]; then
+            mv "$repo_path/.bare" "$repo_path/.git"
+        fi
+        return 1
+    fi
     if ! verify_worktree "$repo_path"; then
         echo "Conversion verification failed."
+        echo "Rolling back conversion..."
+        if [ -f "$repo_path/.git" ]; then rm -f "$repo_path/.git"; fi
+        if [ ! -d "$repo_path/.git" ] && [ -d "$repo_path/.bare" ]; then
+            mv "$repo_path/.bare" "$repo_path/.git"
+        fi
         return 1
     fi
     echo "Converted."

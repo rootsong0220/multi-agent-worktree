@@ -226,10 +226,29 @@ function Convert-ToWorktree {
     $args = @("worktree", "add", "-f")
     if ($detachFlag) { $args += $detachFlag }
     $args += @($RepoPath, $targetRef)
-    git -C (Join-Path $RepoPath ".bare") @args
+    $output = git -C (Join-Path $RepoPath ".bare") @args 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "git worktree add failed."
+        $output | ForEach-Object { Write-Host $_ }
+        Write-Host "Rolling back conversion..." -ForegroundColor Yellow
+        if (Test-Path (Join-Path $RepoPath ".git")) {
+            Remove-Item -Force -Recurse (Join-Path $RepoPath ".git") -ErrorAction SilentlyContinue
+        }
+        if ((-not (Test-Path (Join-Path $RepoPath ".git"))) -and (Test-Path (Join-Path $RepoPath ".bare"))) {
+            Move-Item (Join-Path $RepoPath ".bare") (Join-Path $RepoPath ".git")
+        }
+        return
+    }
 
     if (-not (Verify-Worktree -RepoPath $RepoPath)) {
         Write-Error "Conversion verification failed."
+        Write-Host "Rolling back conversion..." -ForegroundColor Yellow
+        if (Test-Path (Join-Path $RepoPath ".git")) {
+            Remove-Item -Force -Recurse (Join-Path $RepoPath ".git") -ErrorAction SilentlyContinue
+        }
+        if ((-not (Test-Path (Join-Path $RepoPath ".git"))) -and (Test-Path (Join-Path $RepoPath ".bare"))) {
+            Move-Item (Join-Path $RepoPath ".bare") (Join-Path $RepoPath ".git")
+        }
         return
     }
 
