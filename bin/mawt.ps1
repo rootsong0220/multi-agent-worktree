@@ -203,8 +203,13 @@ function Convert-ToWorktree {
 
     $status = git -C $RepoPath status --porcelain
     if ($status) {
-        Write-Error "Working tree has uncommitted changes. Please commit or stash before converting."
-        return
+        Write-Warning "Working tree has uncommitted changes."
+        $confirm = Read-Host "Force convert anyway? This may overwrite files. (y/N)"
+        if ($confirm -notin @("y","Y")) {
+            Write-Host "Aborted." -ForegroundColor Yellow
+            return
+        }
+        Write-Warning "Forcing convert with uncommitted changes. Files may be overwritten."
     }
 
     $branchName = (git -C $RepoPath symbolic-ref --quiet --short HEAD 2>$null)
@@ -223,7 +228,42 @@ function Convert-ToWorktree {
     $args += @($RepoPath, $targetRef)
     git -C (Join-Path $RepoPath ".bare") @args
 
+    if (-not (Verify-Worktree -RepoPath $RepoPath)) {
+        Write-Error "Conversion verification failed."
+        return
+    }
+
     Write-Host "Converted." -ForegroundColor Green
+}
+
+function Verify-Worktree {
+    param ($RepoPath)
+    $gitFile = Join-Path $RepoPath ".git"
+    if (-not (Test-Path $gitFile)) {
+        Write-Host "Verify failed: .git file missing at $RepoPath" -ForegroundColor Red
+        return $false
+    }
+    $gitdirLine = Get-Content $gitFile | Where-Object { $_ -like "gitdir:*" } | Select-Object -First 1
+    if (-not $gitdirLine) {
+        Write-Host "Verify failed: .git file does not contain gitdir pointer." -ForegroundColor Red
+        return $false
+    }
+    $gitdir = $gitdirLine -replace "^gitdir:\s*", ""
+    if (-not (Test-Path $gitdir)) {
+        Write-Host "Verify failed: gitdir path does not exist: $gitdir" -ForegroundColor Red
+        return $false
+    }
+    $worktrees = git -C (Join-Path $RepoPath ".bare") worktree list --porcelain | Select-String -Pattern "^worktree\s+"
+    $found = $false
+    foreach ($line in $worktrees) {
+        $path = ($line -replace "^worktree\s+", "").Trim()
+        if ($path -eq $RepoPath) { $found = $true; break }
+    }
+    if (-not $found) {
+        Write-Host "Verify failed: worktree not registered in bare repo." -ForegroundColor Red
+        return $false
+    }
+    return $true
 }
 
 # 3. Worktree Selection

@@ -424,17 +424,50 @@ launch_agent() {
 # ------------------------------------------------------------------
 # Utils
 # ------------------------------------------------------------------
+verify_worktree() {
+    local repo_path="$1"
+    local gitfile="$repo_path/.git"
+    if [ ! -f "$gitfile" ]; then
+        echo "Verify failed: .git file missing at $repo_path"
+        return 1
+    fi
+    local gitdir
+    gitdir=$(sed -n 's/^gitdir: //p' "$gitfile")
+    if [ -z "$gitdir" ]; then
+        echo "Verify failed: .git file does not contain gitdir pointer."
+        return 1
+    fi
+    if [ ! -d "$gitdir" ]; then
+        echo "Verify failed: gitdir path does not exist: $gitdir"
+        return 1
+    fi
+    if ! git -C "$repo_path/.bare" worktree list --porcelain | awk '$1=="worktree"{print $2}' | grep -Fxq "$repo_path"; then
+        echo "Verify failed: worktree not registered in bare repo."
+        return 1
+    fi
+    return 0
+}
+
 cmd_convert() {
     local repo_path="$1"
+    local force_mode="${2:-}"
     echo "Converting '$repo_path'..."
     if [ ! -d "$repo_path/.git" ]; then
         echo "Error: Not a standard git repo (no .git found)."
         return 1
     fi
     if [ -n "$(git -C "$repo_path" status --porcelain)" ]; then
-        echo "Error: Working tree has uncommitted changes."
-        echo "Please commit or stash before converting."
-        return 1
+        if [ "$force_mode" != "--force" ]; then
+            echo "Warning: Working tree has uncommitted changes."
+            read -p "Force convert anyway? This may overwrite files. (y/N) " confirm
+            if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+                echo "Aborted."
+                return 1
+            fi
+            force_mode="--force"
+        else
+            echo "Warning: Forcing convert with uncommitted changes. Files may be overwritten."
+        fi
     fi
 
     local branch_name=""
@@ -453,6 +486,10 @@ cmd_convert() {
 
     # Register the existing working directory as a worktree.
     git -C "$repo_path/.bare" worktree add -f $detach_flag "$repo_path" "$target_ref"
+    if ! verify_worktree "$repo_path"; then
+        echo "Conversion verification failed."
+        return 1
+    fi
     echo "Converted."
 }
 
