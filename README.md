@@ -122,6 +122,13 @@ Gemini 에이전트 실행 시, 인증 방식은 **자동으로 감지**됩니�
 
 수동으로 모드를 지정하려면 설정 파일(`~/.mawt/config`)이나 환경 변수로 `GEMINI_AUTH_MODE`를 `oauth` 또는 `api`로 설정하세요.
 
+## IntelliJ Worktree 운영 가이드
+- **프로젝트는 worktree 디렉토리 기준으로 열기**: `.bare`가 아니라 실제 worktree 폴더를 루트로 열어야 VCS가 정상 인식됩니다.
+- **`.git`은 파일이어야 정상**: worktree 루트에 `.git` 파일이 있어야 Git 인식이 됩니다. 파일 안에 `gitdir:` 포인터가 있어야 정상입니다.
+- **IDE에서 Git 인식이 안 되면**: `VCS > Enable Version Control Integration`으로 강제 등록하세요.
+- **`.idea` 공유 정책 정하기**: worktree마다 설정이 달라질 수 있으니 팀 정책에 따라 `.idea`를 무시하거나 필요한 일부만 공유하세요.
+- **성능 팁**: 대규모 MSA는 필요한 서비스만 열고, 자동 Gradle sync는 수동으로 전환하는 것을 권장합니다.
+
 ## 개발 로드맵
 
 상세 개발 계획은 [ROADMAP.md](ROADMAP.md)를 참고하세요.
