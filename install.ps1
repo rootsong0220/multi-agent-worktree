@@ -126,6 +126,38 @@ Write-Host "'mawt.cmd' wrapper created at $BinDir" -ForegroundColor Green
 
 Write-Host "MAWT scripts installed to $BinDir" -ForegroundColor Green
 
+# 2. Add to PATH (User + Session) before CLI checks
+# Set MAWT_NO_PATH=1 to skip automatic PATH changes (policy-sensitive environments).
+$pathsToAdd = @($BinDir)
+try {
+    $npmPrefix = (npm prefix -g 2>$null).Trim()
+    if ($npmPrefix) { $pathsToAdd += $npmPrefix }
+} catch {
+    # ignore npm prefix detection errors
+}
+
+# Add to current session PATH for immediate detection
+foreach ($p in $pathsToAdd | Select-Object -Unique) {
+    if ($Env:Path -notlike "*$p*") {
+        $Env:Path = "$Env:Path;$p"
+    }
+}
+
+# Add to User PATH for persistence (unless opted out)
+if (-not $Env:MAWT_NO_PATH) {
+    $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    foreach ($p in $pathsToAdd | Select-Object -Unique) {
+        if ($CurrentPath -notlike "*$p*") {
+            Write-Host "Adding $p to User PATH..." -ForegroundColor Cyan
+            $CurrentPath = "$CurrentPath;$p"
+        }
+    }
+    [Environment]::SetEnvironmentVariable("Path", $CurrentPath, "User")
+    Write-Host "Path updated. You may need to restart your terminal." -ForegroundColor Yellow
+} else {
+    Write-Host "Skipping PATH update because MAWT_NO_PATH is set." -ForegroundColor DarkGray
+}
+
 # Function to check and install AI CLI tools via NPM
 function Check-AiCli {
     param (
@@ -159,8 +191,7 @@ function Check-AiCli {
     }
 } # Closing brace for function Check-AiCli
 
-
-# 2. Check AI CLI Tools
+# 3. Check AI CLI Tools
 Write-Host "`n--- Checking AI Agent CLI Tools ---" -ForegroundColor Cyan
 
 # Gemini CLI
@@ -171,35 +202,6 @@ Check-AiCli -ToolCommand "claude" -NpmPackage "@anthropic-ai/claude-code"
 
 # Codex CLI
 Check-AiCli -ToolCommand "codex" -NpmPackage "@openai/codex"
-
-# 3. Add to PATH (Previous step 3, now moved after CLI checks)
-# Set MAWT_NO_PATH=1 to skip automatic PATH changes (policy-sensitive environments).
-if (-not $Env:MAWT_NO_PATH) {
-    $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    $pathsToAdd = @($BinDir)
-
-    # Ensure npm global bin directory is discoverable (e.g., gemini/claude/codex)
-    try {
-        $npmPrefix = (npm prefix -g 2>$null).Trim()
-        if ($npmPrefix) {
-            $pathsToAdd += $npmPrefix
-        }
-    } catch {
-        # ignore npm prefix detection errors
-    }
-
-    foreach ($p in $pathsToAdd | Select-Object -Unique) {
-        if ($CurrentPath -notlike "*$p*") {
-            Write-Host "Adding $p to User PATH..." -ForegroundColor Cyan
-            $CurrentPath = "$CurrentPath;$p"
-        }
-    }
-
-    [Environment]::SetEnvironmentVariable("Path", $CurrentPath, "User")
-    Write-Host "Path updated. You may need to restart your terminal." -ForegroundColor Yellow
-} else {
-    Write-Host "Skipping PATH update because MAWT_NO_PATH is set." -ForegroundColor DarkGray
-}
 
 # 4. Configuration (Previous step 4, now moved after Path config)
 Write-Host "`n--- Configuration ---" -ForegroundColor Cyan
