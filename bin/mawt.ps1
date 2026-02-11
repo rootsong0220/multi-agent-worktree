@@ -496,7 +496,7 @@ function Launch-Agent {
         if (Get-Command $agent -ErrorAction SilentlyContinue) {
             Write-Host "DEBUG: Agent command: '$agent'" -ForegroundColor Magenta
             Write-Host "DEBUG: Agent arguments: '$($agentArgs -join ' ')'" -ForegroundColor Magenta
-            & $agent $agentArgs
+            & $agent @agentArgs
         } else {
             Write-Error "$agent not found in PATH."
         }
