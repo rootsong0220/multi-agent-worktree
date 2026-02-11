@@ -227,6 +227,7 @@ function Convert-ToWorktree {
     if ($detachFlag) { $args += $detachFlag }
     $args += @($RepoPath, $targetRef)
     $output = git -C (Join-Path $RepoPath ".bare") @args 2>&1
+    $backupDir = $null
     if ($LASTEXITCODE -ne 0) {
         if ($output -match "already exists") {
             $registered = $false
@@ -257,6 +258,11 @@ function Convert-ToWorktree {
                     Write-Host "Retry succeeded. Backup at: $backupDir" -ForegroundColor Green
                 } else {
                     Write-Host "Retry failed." -ForegroundColor Yellow
+                    if ($backupDir -and (Test-Path $backupDir)) {
+                        Write-Host "Restoring backup..." -ForegroundColor Yellow
+                        Get-ChildItem $RepoPath -Force | Where-Object { $_.Name -ne ".bare" } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+                        Get-ChildItem $backupDir -Force | Move-Item -Destination $RepoPath -ErrorAction SilentlyContinue
+                    }
                 }
             }
         }

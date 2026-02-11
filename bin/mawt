@@ -486,12 +486,13 @@ cmd_convert() {
 
     # Register the existing working directory as a worktree.
     local wt_output=""
+    local backup_dir=""
     wt_output=$(git -C "$repo_path/.bare" worktree add -f $detach_flag "$repo_path" "$target_ref" 2>&1)
     if [ $? -ne 0 ]; then
         if echo "$wt_output" | grep -qi "already exists"; then
             if ! git -C "$repo_path/.bare" worktree list --porcelain | awk '$1=="worktree"{print $2}' | grep -Fxq "$repo_path"; then
                 echo "Detected existing path without worktree registration. Backing up and retrying..."
-                local backup_dir="${repo_path}._backup_$(date +%Y%m%d%H%M%S)"
+                backup_dir="${repo_path}._backup_$(date +%Y%m%d%H%M%S)"
                 mkdir -p "$backup_dir"
                 for item in "$repo_path"/* "$repo_path"/.*; do
                     case "$(basename "$item")" in
@@ -504,6 +505,21 @@ cmd_convert() {
                     echo "Retry succeeded. Backup at: $backup_dir"
                 else
                     echo "Retry failed."
+                    if [ -n "$backup_dir" ] && [ -d "$backup_dir" ]; then
+                        echo "Restoring backup..."
+                        for item in "$repo_path"/* "$repo_path"/.*; do
+                            case "$(basename "$item")" in
+                                "."|".."|".bare") continue ;;
+                            esac
+                            [ -e "$item" ] && rm -rf "$item" || true
+                        done
+                        for item in "$backup_dir"/* "$backup_dir"/.*; do
+                            case "$(basename "$item")" in
+                                "."|"..") continue ;;
+                            esac
+                            [ -e "$item" ] && mv "$item" "$repo_path/" || true
+                        done
+                    fi
                 fi
             fi
         fi
