@@ -228,6 +228,26 @@ function Convert-ToWorktree {
     $args += @($RepoPath, $targetRef)
     $output = git -C (Join-Path $RepoPath ".bare") @args 2>&1
     if ($LASTEXITCODE -ne 0) {
+        if ($output -match "already exists") {
+            $registered = $false
+            $wtLines = git -C (Join-Path $RepoPath ".bare") worktree list --porcelain | Select-String -Pattern "^worktree\s+"
+            foreach ($line in $wtLines) {
+                $path = ($line -replace "^worktree\s+", "").Trim()
+                if ($path -eq $RepoPath) { $registered = $true; break }
+            }
+            if (-not $registered) {
+                Write-Host "Detected existing path without worktree registration. Backing up and retrying..." -ForegroundColor Yellow
+                $backupDir = "${RepoPath}._backup_$(Get-Date -Format yyyyMMddHHmmss)"
+                New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+                Get-ChildItem $RepoPath -Force | Where-Object { $_.Name -ne ".bare" } | Move-Item -Destination $backupDir
+                $output = git -C (Join-Path $RepoPath ".bare") @args 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "Retry succeeded. Backup at: $backupDir" -ForegroundColor Green
+                } else {
+                    Write-Host "Retry failed." -ForegroundColor Yellow
+                }
+            }
+        }
         Write-Error "git worktree add failed."
         $output | ForEach-Object { Write-Host $_ }
         Write-Host "Rolling back conversion..." -ForegroundColor Yellow
