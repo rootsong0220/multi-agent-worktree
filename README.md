@@ -57,10 +57,9 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; $installer = Join-Path $env:TE
 
 ```
 
-만약 **Command Prompt (cmd)**를 사용 중이라면 아래 명령어를 복사해 실행하세요:
+만약 **Command Prompt (cmd)** 를 사용 중이라면 아래 명령어를 복사해 실행하세요:
 
 ```cmd
-# 'main' 브랜치에서 설치/업데이트 (기본값)
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$installer = Join-Path $env:TEMP 'mawt-install.ps1'; iwr https://raw.githubusercontent.com/rootsong0220/multi-agent-worktree/main/install.ps1 -UseBasicParsing -OutFile $installer; & $installer; Remove-Item $installer -ErrorAction SilentlyContinue"
 ```
 
