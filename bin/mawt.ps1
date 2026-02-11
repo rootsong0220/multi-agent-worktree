@@ -13,18 +13,14 @@ $GITLAB_TOKEN = $null
 
 # Load Config
 if (Test-Path $CONFIG_FILE) {
-    Write-Host "DEBUG: Loading config from $CONFIG_FILE" -ForegroundColor DarkGray
     Get-Content $CONFIG_FILE | ForEach-Object {
         $line = $_.Trim()
         if ([string]::IsNullOrWhiteSpace($line)) { return }
-        
-        Write-Host "DEBUG: Read line: '$line'" -ForegroundColor DarkGray
-        
+
         # Allow spaces around '=', and optional quotes for value
         if ($line -match '^\s*(\w+)\s*=\s*"?([^"]*)"?\s*$') {
             $key = $matches[1]
             $val = $matches[2]
-            Write-Host "DEBUG: Set $key = *** (hidden)" -ForegroundColor DarkGray
             switch ($key) {
                 "GITLAB_TOKEN" { $script:GITLAB_TOKEN = $val }
                 "GITLAB_BASE_URL" { $script:GITLAB_BASE_URL = $val }
@@ -33,14 +29,12 @@ if (Test-Path $CONFIG_FILE) {
                 "GEMINI_AUTH_MODE" { $env:GEMINI_AUTH_MODE = $val }
             }
         } else {
-            Write-Host "DEBUG: Line did not match regex" -ForegroundColor Yellow
+            Write-Host "Warning: Ignoring invalid config line: '$line'" -ForegroundColor Yellow
         }
     }
 } else {
-    Write-Host "DEBUG: Config file not found at $CONFIG_FILE" -ForegroundColor Red
+    Write-Host "Config file not found at $CONFIG_FILE" -ForegroundColor Yellow
 }
-
-Write-Host "DEBUG: Final GITLAB_TOKEN status: $(if ($GITLAB_TOKEN) { 'Set' } else { 'NULL' })" -ForegroundColor DarkGray
 
 # Ensure trailing slash removal
 if ($GITLAB_BASE_URL.EndsWith("/")) {
@@ -412,70 +406,7 @@ function Launch-Agent {
         "gemini" {
             $models = @("gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro") # 업데이트된 Gemini 모델 목록
             $selectedModel = Select-Item -Items $models -PromptText "Select Gemini Model"
-            if ($selectedModel) {
-                # Directly call Node.js with the Gemini CLI entry point, bypassing gemini.ps1 wrapper.
-                # We need to find node.exe and the correct path to index.js.
-                # Path to index.js is likely relative to global npm install location.
-                # Assuming node.exe is in PATH.
-                
-                # Construct the path to the Gemini CLI index.js script.
-                # This path is based on common global npm install locations on Windows (e.g., %APPDATA%\npm).
-                # The original gemini.ps1 used $basedir which was C:\Users\User\AppData\Roaming\npm
-                # So, index.js path is C:\Users\User\AppData\Roaming\npm\node_modules\@google\gemini-cli\dist\index.js
-                # Use $env:APPDATA\npm for the global npm prefix path.
-                $geminiCliJsPath = Join-Path $env:APPDATA\npm "node_modules\@google\gemini-cli\dist\index.js"
-                
-                # Check if node is available in PATH
-                if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-                    Write-Error "Node.js is not found in PATH. Please install Node.js or ensure it's in your PATH."
-                    return # Exit Launch-Agent
-                }
-
-                # Construct arguments for Node.js
-                $nodeArgs = @(
-                    $geminiCliJsPath,
-                    "--model",
-                    $selectedModel
-                )
-
-                Write-Host "DEBUG: Running Gemini CLI directly via Node.js:" -ForegroundColor Magenta
-                Write-Host "DEBUG: Node executable: 'node'" -ForegroundColor Magenta
-                Write-Host "DEBUG: Node arguments: '$($nodeArgs -join ' ')'" -ForegroundColor Magenta
-                
-                # Execute Node.js with the Gemini CLI script and arguments using Start-Process
-                # Start-Process is generally robust for passing arguments and handling output.
-                try {
-                    # Ensure process details are captured and wait for completion.
-                    # Redirecting output to temp files to inspect it.
-                    $tempOut = Join-Path $env:TEMP "gemini_out.txt"
-                    $tempErr = Join-Path $env:TEMP "gemini_err.txt"
-                    
-                    # Use -NoNewWindow for a cleaner execution within the CLI.
-                    # -Wait ensures the script waits for Node.js to finish.
-                    $proc = Start-Process -FilePath "node" -ArgumentList $nodeArgs -Wait -PassThru -NoNewWindow
-                    $exitCode = $proc.ExitCode
-
-                    # Read output from temp files
-                    $stdoutContent = if (Test-Path $tempOut) { Get-Content $tempOut | Out-String } else { "" }
-                    $stderrContent = if (Test-Path $tempErr) { Get-Content $tempErr | Out-String } else { "" }
-
-                    if ($stdoutContent) { Write-Host "Gemini stdout: $($stdoutContent.Trim())" }
-                    if ($stderrContent) { Write-Host "Gemini stderr: $($stderrContent.Trim())" -ForegroundColor Yellow }
-
-                    if ($exitCode -ne 0) {
-                        Write-Error "Gemini CLI exited with code $exitCode."
-                    }
-                } catch {
-                    Write-Error "Error running Gemini CLI: $($_.Exception.Message)"
-                } finally {
-                    # Clean up temp files
-                    if (Test-Path $tempOut) { Remove-Item $tempOut -ErrorAction SilentlyContinue }
-                    if (Test-Path $tempErr) { Remove-Item $tempErr -ErrorAction SilentlyContinue }
-                }
-                
-                # Exit Launch-Agent after invoking Gemini CLI directly
-                return 
-            }
+            if ($selectedModel) { $agentArgs += "--model"; $agentArgs += "$selectedModel" }
         }
         "claude" {
             $models = @("claude-opus-4-6", "claude-sonnet-4-5-20250929") # 업데이트된 Claude 모델 목록
@@ -494,8 +425,6 @@ function Launch-Agent {
         pwsh
     } else {
         if (Get-Command $agent -ErrorAction SilentlyContinue) {
-            Write-Host "DEBUG: Agent command: '$agent'" -ForegroundColor Magenta
-            Write-Host "DEBUG: Agent arguments: '$($agentArgs -join ' ')'" -ForegroundColor Magenta
             & $agent @agentArgs
         } else {
             Write-Error "$agent not found in PATH."
