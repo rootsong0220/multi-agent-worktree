@@ -129,6 +129,14 @@ Gemini 에이전트 실행 시, 인증 방식은 **자동으로 감지**됩니�
 - **`.idea` 공유 정책 정하기**: worktree마다 설정이 달라질 수 있으니 팀 정책에 따라 `.idea`를 무시하거나 필요한 일부만 공유하세요.
 - **성능 팁**: 대규모 MSA는 필요한 서비스만 열고, 자동 Gradle sync는 수동으로 전환하는 것을 권장합니다.
 
+## Worktree 운영 가이드 (표준 Repo 유지 + 전용 Worktree 루트)
+- **원본 repo는 보존**: 표준 Git repo(예: `/path/to/my-service`)는 그대로 두고 작업하지 않습니다.
+- **전용 worktree 루트 생성**: `-worktree` 접미사 디렉토리(예: `/path/to/my-service-worktree`) 아래에만 worktree를 생성합니다.
+- **IntelliJ는 worktree만 열기**: 실제 작업은 `*-worktree/<branch>` 디렉토리를 열어 진행합니다.
+- **에이전트 병렬 운용**: 필요한 만큼 worktree를 생성해 각 에이전트가 다른 worktree에서 작업하게 합니다.
+- **모니터링**: `mawt status`로 전체 worktree 상태를 요약 확인합니다.
+- **충돌 방지**: 원본 repo에서는 변경하지 않고, 모든 커밋은 worktree에서만 수행합니다.
+
 ## 개발 로드맵
 
 상세 개발 계획은 [ROADMAP.md](ROADMAP.md)를 참고하세요.
