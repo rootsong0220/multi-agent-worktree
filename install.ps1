@@ -7,7 +7,7 @@ function Check-Deps {
     $deps = @("git", "node", "npm") # Added node and npm
     foreach ($dep in $deps) {
         if (-not (Get-Command $dep -ErrorAction SilentlyContinue)) {
-            Write-Error "Error: '$dep' is required but not installed." -ForegroundColor Red
+            Write-Host "Error: '$dep' is required but not installed." -ForegroundColor Red
             Write-Host "To install '$dep', follow these steps:" -ForegroundColor Yellow
             if ($dep -eq "node" -or $dep -eq "npm") {
                 Write-Host "  1. Download and install the LTS version from the official Node.js website (https://nodejs.org)."
@@ -17,7 +17,7 @@ function Check-Deps {
             } else {
                 Write-Host "  Please manually install '$dep' using your preferred package manager."
             }
-            exit 1
+            throw "Missing dependency: $dep"
         }
     }
 }
@@ -62,11 +62,14 @@ Write-Host "Downloading mawt.ps1 from branch '$InstallBranch' on GitHub..." -For
 Write-Host "Targeting: $MawtScriptPath" -ForegroundColor DarkGray
 
 $mawtScriptFoundLocally = $false
-$currentScriptDir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
+$currentScriptDir = $null
+if ($MyInvocation -and $MyInvocation.MyCommand -and $MyInvocation.MyCommand.Path) {
+    $currentScriptDir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
+}
 
 # Check if install.ps1 is run from a cloned git repository's root
 # This assumes install.ps1 is in the root of the repo (or a parent directory of bin/mawt.ps1)
-if (Test-Path (Join-Path $currentScriptDir ".git")) {
+if ($currentScriptDir -and (Test-Path (Join-Path $currentScriptDir ".git"))) {
     $localMawtPath = Join-Path $currentScriptDir "bin\mawt.ps1"
     if (Test-Path $localMawtPath) {
         Write-Host "Found local mawt.ps1 at $localMawtPath. Copying instead of downloading." -ForegroundColor DarkGreen
@@ -86,7 +89,7 @@ if (-not $mawtScriptFoundLocally) {
         try {
             Write-Host "Attempting download (Attempt $($i + 1)/$maxRetries)..." -ForegroundColor DarkGray
             Invoke-WebRequest -Uri $ScriptUrl -OutFile $MawtScriptPath -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
-            $downloadSuccess = true
+            $downloadSuccess = $true
             break # Exit loop if successful
         } catch {
             Write-Host "Download failed: $($_.Exception.Message)" -ForegroundColor Yellow
