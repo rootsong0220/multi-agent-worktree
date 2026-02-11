@@ -153,6 +153,7 @@ ensure_cloned() {
     local http_url="$3"
     
     local target_dir="$WORKSPACE_DIR/$repo_name"
+    WORKTREE_REPO_DIR="$target_dir"
 
     # Check if exists
     if [ -d "$target_dir" ]; then
@@ -160,17 +161,29 @@ ensure_cloned() {
             return 0 # Already set up
         elif [ -d "$target_dir/.git" ]; then
             echo "Standard repository detected at $target_dir."
-            # Only ask interactive confirmation if not in batch/init mode? 
-            # For now, keep asking. But 'init' might fail non-interactive here.
-            # Assuming 'init' is interactive or just prompts.
-            read -p "Convert to Worktree structure? (y/N) " confirm
-            if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-                cmd_convert "$target_dir"
+            read -p "Enter worktree directory suffix (default: -worktree): " suffix
+            if [ -z "$suffix" ]; then suffix="-worktree"; fi
+            local worktree_dir="${target_dir}${suffix}"
+            if [ -d "$worktree_dir/.bare" ]; then
+                WORKTREE_REPO_DIR="$worktree_dir"
                 return 0
-            else
-                echo "Cannot proceed without conversion."
+            elif [ -e "$worktree_dir" ]; then
+                echo "Error: $worktree_dir exists but is not a MAWT worktree root."
                 exit 1
             fi
+
+            echo "Creating worktree root at $worktree_dir"
+            mkdir -p "$worktree_dir"
+            git clone --bare "$target_dir" "$worktree_dir/.bare"
+            local origin_url
+            origin_url=$(git -C "$target_dir" remote get-url origin 2>/dev/null || true)
+            if [ -n "$origin_url" ]; then
+                git -C "$worktree_dir/.bare" remote set-url origin "$origin_url"
+            fi
+            git -C "$worktree_dir/.bare" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+            WORKTREE_REPO_DIR="$worktree_dir"
+            echo "Worktree root created."
+            return 0
         else
             echo "Directory $target_dir exists but is not a git repo."
             exit 1
@@ -632,7 +645,7 @@ case "$1" in
         # Default Flow
         select_repository ""
         ensure_cloned "$SEL_REPO_NAME" "$SEL_SSH_URL" "$SEL_HTTP_URL"
-        select_worktree_action "$WORKSPACE_DIR/$SEL_REPO_NAME"
+        select_worktree_action "$WORKTREE_REPO_DIR"
         launch_agent "$TARGET_WORKTREE"
         ;;
 esac

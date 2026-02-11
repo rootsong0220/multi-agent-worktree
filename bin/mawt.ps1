@@ -146,20 +146,35 @@ function Ensure-Cloned {
     param ($RepoInfo)
 
     $targetDir = Join-Path $WORKSPACE_DIR $RepoInfo.Name
+    $global:WORKTREE_REPO_DIR = $targetDir
 
     if (Test-Path $targetDir) {
         if (Test-Path (Join-Path $targetDir ".bare")) {
             return # Already set up
         } elseif (Test-Path (Join-Path $targetDir ".git")) {
             Write-Host "Standard repository detected at $targetDir." -ForegroundColor Yellow
-            $confirm = Read-Host "Convert to Worktree structure? (y/N)"
-            if ($confirm -match "^[yY]$") {
-                Convert-ToWorktree -RepoPath $targetDir
+            $suffix = Read-Host "Enter worktree directory suffix (default: -worktree)"
+            if (-not $suffix) { $suffix = "-worktree" }
+            $worktreeDir = "${targetDir}${suffix}"
+            if (Test-Path (Join-Path $worktreeDir ".bare")) {
+                $global:WORKTREE_REPO_DIR = $worktreeDir
                 return
-            } else {
-                Write-Error "Cannot proceed without conversion."
+            } elseif (Test-Path $worktreeDir) {
+                Write-Error "$worktreeDir exists but is not a MAWT worktree root."
                 exit 1
             }
+
+            Write-Host "Creating worktree root at $worktreeDir" -ForegroundColor Cyan
+            New-Item -ItemType Directory -Force -Path $worktreeDir | Out-Null
+            git clone --bare $targetDir (Join-Path $worktreeDir ".bare")
+            $originUrl = git -C $targetDir remote get-url origin 2>$null
+            if ($originUrl) {
+                git -C (Join-Path $worktreeDir ".bare") remote set-url origin $originUrl
+            }
+            git -C (Join-Path $worktreeDir ".bare") config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+            $global:WORKTREE_REPO_DIR = $worktreeDir
+            Write-Host "Worktree root created." -ForegroundColor Green
+            return
         } else {
             Write-Error "Directory $targetDir exists but is not a valid git repo structure for MAWT."
             exit 1
@@ -326,7 +341,11 @@ function Verify-Worktree {
 # 3. Worktree Selection
 function Select-Worktree {
     param ($RepoInfo)
-    $repoDir = Join-Path $WORKSPACE_DIR $RepoInfo.Name
+    if ($global:WORKTREE_REPO_DIR) {
+        $repoDir = $global:WORKTREE_REPO_DIR
+    } else {
+        $repoDir = Join-Path $WORKSPACE_DIR $RepoInfo.Name
+    }
     $bareDir = Join-Path $repoDir ".bare"
     
     Push-Location $bareDir
