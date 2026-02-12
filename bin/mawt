@@ -153,6 +153,7 @@ ensure_cloned() {
     local http_url="$3"
     
     local target_dir="$WORKSPACE_DIR/$repo_name"
+    WORKTREE_REPO_DIR="$target_dir"
 
     # Check if exists
     if [ -d "$target_dir" ]; then
@@ -160,17 +161,29 @@ ensure_cloned() {
             return 0 # Already set up
         elif [ -d "$target_dir/.git" ]; then
             echo "Standard repository detected at $target_dir."
-            # Only ask interactive confirmation if not in batch/init mode? 
-            # For now, keep asking. But 'init' might fail non-interactive here.
-            # Assuming 'init' is interactive or just prompts.
-            read -p "Convert to Worktree structure? (y/N) " confirm
-            if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-                cmd_convert "$target_dir"
+            read -p "Enter worktree directory suffix (default: -worktree): " suffix
+            if [ -z "$suffix" ]; then suffix="-worktree"; fi
+            local worktree_dir="${target_dir}${suffix}"
+            if [ -d "$worktree_dir/.bare" ]; then
+                WORKTREE_REPO_DIR="$worktree_dir"
                 return 0
-            else
-                echo "Cannot proceed without conversion."
+            elif [ -e "$worktree_dir" ]; then
+                echo "Error: $worktree_dir exists but is not a MAWT worktree root."
                 exit 1
             fi
+
+            echo "Creating worktree root at $worktree_dir"
+            mkdir -p "$worktree_dir"
+            git clone --bare "$target_dir" "$worktree_dir/.bare"
+            local origin_url
+            origin_url=$(git -C "$target_dir" remote get-url origin 2>/dev/null || true)
+            if [ -n "$origin_url" ]; then
+                git -C "$worktree_dir/.bare" remote set-url origin "$origin_url"
+            fi
+            git -C "$worktree_dir/.bare" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+            WORKTREE_REPO_DIR="$worktree_dir"
+            echo "Worktree root created."
+            return 0
         else
             echo "Directory $target_dir exists but is not a git repo."
             exit 1
@@ -424,17 +437,123 @@ launch_agent() {
 # ------------------------------------------------------------------
 # Utils
 # ------------------------------------------------------------------
+verify_worktree() {
+    local repo_path="$1"
+    local gitfile="$repo_path/.git"
+    if [ ! -f "$gitfile" ]; then
+        echo "Verify failed: .git file missing at $repo_path"
+        return 1
+    fi
+    local gitdir
+    gitdir=$(sed -n 's/^gitdir: //p' "$gitfile")
+    if [ -z "$gitdir" ]; then
+        echo "Verify failed: .git file does not contain gitdir pointer."
+        return 1
+    fi
+    if [ ! -d "$gitdir" ]; then
+        echo "Verify failed: gitdir path does not exist: $gitdir"
+        return 1
+    fi
+    if ! git -C "$repo_path/.bare" worktree list --porcelain | awk '$1=="worktree"{print $2}' | grep -Fxq "$repo_path"; then
+        echo "Verify failed: worktree not registered in bare repo."
+        return 1
+    fi
+    return 0
+}
+
 cmd_convert() {
     local repo_path="$1"
+    local force_mode="${2:-}"
     echo "Converting '$repo_path'..."
+    if [ ! -d "$repo_path/.git" ]; then
+        echo "Error: Not a standard git repo (no .git found)."
+        return 1
+    fi
+    if [ -n "$(git -C "$repo_path" status --porcelain)" ]; then
+        if [ "$force_mode" != "--force" ]; then
+            echo "Warning: Working tree has uncommitted changes."
+            read -p "Force convert anyway? This may overwrite files. (y/N) " confirm
+            if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+                echo "Aborted."
+                return 1
+            fi
+            force_mode="--force"
+        else
+            echo "Warning: Forcing convert with uncommitted changes. Files may be overwritten."
+        fi
+    fi
+
+    local branch_name=""
+    local target_ref=""
+    local detach_flag=""
+    branch_name=$(git -C "$repo_path" symbolic-ref --quiet --short HEAD || true)
+    if [ -n "$branch_name" ]; then
+        target_ref="$branch_name"
+    else
+        target_ref=$(git -C "$repo_path" rev-parse --verify HEAD)
+        detach_flag="--detach"
+    fi
+
     mv "$repo_path/.git" "$repo_path/.bare"
-    cd "$repo_path/.bare"
-    git config --bool core.bare true
-    local branch_name=$(git symbolic-ref --short HEAD)
-    cd ..
-    mkdir -p "$branch_name"
-    cd ".bare"
-    git worktree add "../$branch_name" "$branch_name"
+    git -C "$repo_path/.bare" config --bool core.bare true
+
+    # Register the existing working directory as a worktree.
+    local wt_output=""
+    local backup_dir=""
+    wt_output=$(git -C "$repo_path/.bare" worktree add -f $detach_flag "$repo_path" "$target_ref" 2>&1)
+    if [ $? -ne 0 ]; then
+        if echo "$wt_output" | grep -qi "already exists"; then
+            if ! git -C "$repo_path/.bare" worktree list --porcelain | awk '$1=="worktree"{print $2}' | grep -Fxq "$repo_path"; then
+                echo "Detected existing path without worktree registration. Backing up and retrying..."
+                backup_dir="${repo_path}._backup_$(date +%Y%m%d%H%M%S)"
+                mkdir -p "$backup_dir"
+                for item in "$repo_path"/* "$repo_path"/.*; do
+                    case "$(basename "$item")" in
+                        "."|".."|".bare") continue ;;
+                    esac
+                    [ -e "$item" ] && mv "$item" "$backup_dir/" || true
+                done
+                wt_output=$(git -C "$repo_path/.bare" worktree add -f $detach_flag "$repo_path" "$target_ref" 2>&1)
+                if [ $? -eq 0 ]; then
+                    echo "Retry succeeded. Backup at: $backup_dir"
+                else
+                    echo "Retry failed."
+                    if [ -n "$backup_dir" ] && [ -d "$backup_dir" ]; then
+                        echo "Restoring backup..."
+                        for item in "$repo_path"/* "$repo_path"/.*; do
+                            case "$(basename "$item")" in
+                                "."|".."|".bare") continue ;;
+                            esac
+                            [ -e "$item" ] && rm -rf "$item" || true
+                        done
+                        for item in "$backup_dir"/* "$backup_dir"/.*; do
+                            case "$(basename "$item")" in
+                                "."|"..") continue ;;
+                            esac
+                            [ -e "$item" ] && mv "$item" "$repo_path/" || true
+                        done
+                    fi
+                fi
+            fi
+        fi
+        echo "Error: git worktree add failed."
+        echo "$wt_output"
+        echo "Rolling back conversion..."
+        if [ -f "$repo_path/.git" ]; then rm -f "$repo_path/.git"; fi
+        if [ ! -d "$repo_path/.git" ] && [ -d "$repo_path/.bare" ]; then
+            mv "$repo_path/.bare" "$repo_path/.git"
+        fi
+        return 1
+    fi
+    if ! verify_worktree "$repo_path"; then
+        echo "Conversion verification failed."
+        echo "Rolling back conversion..."
+        if [ -f "$repo_path/.git" ]; then rm -f "$repo_path/.git"; fi
+        if [ ! -d "$repo_path/.git" ] && [ -d "$repo_path/.bare" ]; then
+            mv "$repo_path/.bare" "$repo_path/.git"
+        fi
+        return 1
+    fi
     echo "Converted."
 }
 
@@ -462,6 +581,35 @@ cmd_uninstall() {
     fi
 }
 
+cmd_status() {
+    echo "Worktree Status in $WORKSPACE_DIR:"
+    if [ ! -d "$WORKSPACE_DIR" ] || [ -z "$(ls -A "$WORKSPACE_DIR" 2>/dev/null)" ]; then
+        echo "  No repositories found."
+        return
+    fi
+
+    for repo in "$WORKSPACE_DIR"/*; do
+        if [ -d "$repo/.bare" ]; then
+            local repo_name
+            repo_name=$(basename "$repo")
+            echo "- $repo_name"
+            git -C "$repo/.bare" worktree list --porcelain | awk '
+                $1=="worktree"{path=$2}
+                $1=="branch"{branch=$2}
+                $1=="locked"{locked=$0}
+                $1=="prunable"{prunable=$0}
+                $1=="HEAD"{head=$2}
+                $0==""{
+                    print "    - " (branch?branch:"(detached)") " (" path ")"
+                    if (locked) print "      " locked
+                    if (prunable) print "      " prunable
+                    path=branch=locked=prunable=head=""
+                }
+            '
+        fi
+    done
+}
+
 # ------------------------------------------------------------------
 # Main Dispatch
 # ------------------------------------------------------------------
@@ -479,6 +627,9 @@ case "$1" in
     list)
         cmd_list
         ;;
+    status)
+        cmd_status
+        ;;
     uninstall)
         cmd_uninstall
         ;;
@@ -487,13 +638,14 @@ case "$1" in
         echo "  (No args)  Start interactive workflow (Select Repo -> Worktree -> Agent)"
         echo "  init <repo> Initialize a specific repository (e.g., mawt init group/project)"
         echo "  list       List managed repositories"
+        echo "  status     Show worktree status across repositories"
         echo "  uninstall  Remove MAWT"
         ;;
     *)
         # Default Flow
         select_repository ""
         ensure_cloned "$SEL_REPO_NAME" "$SEL_SSH_URL" "$SEL_HTTP_URL"
-        select_worktree_action "$WORKSPACE_DIR/$SEL_REPO_NAME"
+        select_worktree_action "$WORKTREE_REPO_DIR"
         launch_agent "$TARGET_WORKTREE"
         ;;
 esac

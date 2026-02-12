@@ -146,20 +146,35 @@ function Ensure-Cloned {
     param ($RepoInfo)
 
     $targetDir = Join-Path $WORKSPACE_DIR $RepoInfo.Name
+    $global:WORKTREE_REPO_DIR = $targetDir
 
     if (Test-Path $targetDir) {
         if (Test-Path (Join-Path $targetDir ".bare")) {
             return # Already set up
         } elseif (Test-Path (Join-Path $targetDir ".git")) {
             Write-Host "Standard repository detected at $targetDir." -ForegroundColor Yellow
-            $confirm = Read-Host "Convert to Worktree structure? (y/N)"
-            if ($confirm -match "^[yY]$") {
-                Convert-ToWorktree -RepoPath $targetDir
+            $suffix = Read-Host "Enter worktree directory suffix (default: -worktree)"
+            if (-not $suffix) { $suffix = "-worktree" }
+            $worktreeDir = "${targetDir}${suffix}"
+            if (Test-Path (Join-Path $worktreeDir ".bare")) {
+                $global:WORKTREE_REPO_DIR = $worktreeDir
                 return
-            } else {
-                Write-Error "Cannot proceed without conversion."
+            } elseif (Test-Path $worktreeDir) {
+                Write-Error "$worktreeDir exists but is not a MAWT worktree root."
                 exit 1
             }
+
+            Write-Host "Creating worktree root at $worktreeDir" -ForegroundColor Cyan
+            New-Item -ItemType Directory -Force -Path $worktreeDir | Out-Null
+            git clone --bare $targetDir (Join-Path $worktreeDir ".bare")
+            $originUrl = git -C $targetDir remote get-url origin 2>$null
+            if ($originUrl) {
+                git -C (Join-Path $worktreeDir ".bare") remote set-url origin $originUrl
+            }
+            git -C (Join-Path $worktreeDir ".bare") config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+            $global:WORKTREE_REPO_DIR = $worktreeDir
+            Write-Host "Worktree root created." -ForegroundColor Green
+            return
         } else {
             Write-Error "Directory $targetDir exists but is not a valid git repo structure for MAWT."
             exit 1
@@ -196,26 +211,141 @@ function Ensure-Cloned {
 function Convert-ToWorktree {
     param ($RepoPath)
     Write-Host "Converting '$RepoPath'..."
+    if (-not (Test-Path (Join-Path $RepoPath ".git"))) {
+        Write-Error "Not a standard git repo (no .git found)."
+        return
+    }
+
+    $status = git -C $RepoPath status --porcelain
+    if ($status) {
+        Write-Warning "Working tree has uncommitted changes."
+        $confirm = Read-Host "Force convert anyway? This may overwrite files. (y/N)"
+        if ($confirm -notin @("y","Y")) {
+            Write-Host "Aborted." -ForegroundColor Yellow
+            return
+        }
+        Write-Warning "Forcing convert with uncommitted changes. Files may be overwritten."
+    }
+
+    $branchName = (git -C $RepoPath symbolic-ref --quiet --short HEAD 2>$null)
+    $targetRef = $branchName
+    $detachFlag = $null
+    if (-not $branchName) {
+        $targetRef = git -C $RepoPath rev-parse --verify HEAD
+        $detachFlag = "--detach"
+    }
+
     Move-Item (Join-Path $RepoPath ".git") (Join-Path $RepoPath ".bare")
-    
-    Push-Location (Join-Path $RepoPath ".bare")
-    git config --bool core.bare true
-    $branchName = git symbolic-ref --short HEAD
-    Pop-Location
-    
-    New-Item -ItemType Directory -Force -Path (Join-Path $RepoPath $branchName) | Out-Null
-    
-    Push-Location (Join-Path $RepoPath ".bare")
-    git worktree add "../$branchName" "$branchName"
-    Pop-Location
-    
+    git -C (Join-Path $RepoPath ".bare") config --bool core.bare true
+
+    $args = @("worktree", "add", "-f")
+    if ($detachFlag) { $args += $detachFlag }
+    $args += @($RepoPath, $targetRef)
+    $output = git -C (Join-Path $RepoPath ".bare") @args 2>&1
+    $backupDir = $null
+    if ($LASTEXITCODE -ne 0) {
+        if ($output -match "already exists") {
+            $registered = $false
+            $repoFull = (Resolve-Path $RepoPath).Path
+            $wtLines = git -C (Join-Path $RepoPath ".bare") worktree list --porcelain | Select-String -Pattern "^worktree\s+"
+            foreach ($line in $wtLines) {
+                $path = ($line -replace "^worktree\s+", "").Trim()
+                $path = $path -replace "/", "\\"
+                try {
+                    $pathFull = (Resolve-Path $path).Path
+                } catch {
+                    $pathFull = $path
+                }
+                if ($pathFull -ieq $repoFull) { $registered = $true; break }
+            }
+            if (-not $registered) {
+                Write-Host "Detected existing path without worktree registration. Backing up and retrying..." -ForegroundColor Yellow
+                $backupDir = "${RepoPath}._backup_$(Get-Date -Format yyyyMMddHHmmss)"
+                New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+                Get-ChildItem $RepoPath -Force | Where-Object { $_.Name -ne ".bare" } | Move-Item -Destination $backupDir -ErrorAction SilentlyContinue
+                $leftovers = Get-ChildItem $RepoPath -Force | Where-Object { $_.Name -ne ".bare" }
+                if ($leftovers) {
+                    Write-Host "Cleaning remaining files before retry..." -ForegroundColor Yellow
+                    $leftovers | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+                }
+                $output = git -C (Join-Path $RepoPath ".bare") @args 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "Retry succeeded. Backup at: $backupDir" -ForegroundColor Green
+                } else {
+                    Write-Host "Retry failed." -ForegroundColor Yellow
+                    if ($backupDir -and (Test-Path $backupDir)) {
+                        Write-Host "Restoring backup..." -ForegroundColor Yellow
+                        Get-ChildItem $RepoPath -Force | Where-Object { $_.Name -ne ".bare" } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+                        Get-ChildItem $backupDir -Force | Move-Item -Destination $RepoPath -ErrorAction SilentlyContinue
+                    }
+                }
+            }
+        }
+        Write-Error "git worktree add failed."
+        $output | ForEach-Object { Write-Host $_ }
+        Write-Host "Rolling back conversion..." -ForegroundColor Yellow
+        if (Test-Path (Join-Path $RepoPath ".git")) {
+            Remove-Item -Force -Recurse (Join-Path $RepoPath ".git") -ErrorAction SilentlyContinue
+        }
+        if ((-not (Test-Path (Join-Path $RepoPath ".git"))) -and (Test-Path (Join-Path $RepoPath ".bare"))) {
+            Move-Item (Join-Path $RepoPath ".bare") (Join-Path $RepoPath ".git")
+        }
+        return
+    }
+
+    if (-not (Verify-Worktree -RepoPath $RepoPath)) {
+        Write-Error "Conversion verification failed."
+        Write-Host "Rolling back conversion..." -ForegroundColor Yellow
+        if (Test-Path (Join-Path $RepoPath ".git")) {
+            Remove-Item -Force -Recurse (Join-Path $RepoPath ".git") -ErrorAction SilentlyContinue
+        }
+        if ((-not (Test-Path (Join-Path $RepoPath ".git"))) -and (Test-Path (Join-Path $RepoPath ".bare"))) {
+            Move-Item (Join-Path $RepoPath ".bare") (Join-Path $RepoPath ".git")
+        }
+        return
+    }
+
     Write-Host "Converted." -ForegroundColor Green
+}
+
+function Verify-Worktree {
+    param ($RepoPath)
+    $gitFile = Join-Path $RepoPath ".git"
+    if (-not (Test-Path $gitFile)) {
+        Write-Host "Verify failed: .git file missing at $RepoPath" -ForegroundColor Red
+        return $false
+    }
+    $gitdirLine = Get-Content $gitFile | Where-Object { $_ -like "gitdir:*" } | Select-Object -First 1
+    if (-not $gitdirLine) {
+        Write-Host "Verify failed: .git file does not contain gitdir pointer." -ForegroundColor Red
+        return $false
+    }
+    $gitdir = $gitdirLine -replace "^gitdir:\s*", ""
+    if (-not (Test-Path $gitdir)) {
+        Write-Host "Verify failed: gitdir path does not exist: $gitdir" -ForegroundColor Red
+        return $false
+    }
+    $worktrees = git -C (Join-Path $RepoPath ".bare") worktree list --porcelain | Select-String -Pattern "^worktree\s+"
+    $found = $false
+    foreach ($line in $worktrees) {
+        $path = ($line -replace "^worktree\s+", "").Trim()
+        if ($path -eq $RepoPath) { $found = $true; break }
+    }
+    if (-not $found) {
+        Write-Host "Verify failed: worktree not registered in bare repo." -ForegroundColor Red
+        return $false
+    }
+    return $true
 }
 
 # 3. Worktree Selection
 function Select-Worktree {
     param ($RepoInfo)
-    $repoDir = Join-Path $WORKSPACE_DIR $RepoInfo.Name
+    if ($global:WORKTREE_REPO_DIR) {
+        $repoDir = $global:WORKTREE_REPO_DIR
+    } else {
+        $repoDir = Join-Path $WORKSPACE_DIR $RepoInfo.Name
+    }
     $bareDir = Join-Path $repoDir ".bare"
     
     Push-Location $bareDir
@@ -498,6 +628,45 @@ function Ensure-GeminiBrowserOpener {
     }
 }
 
+function Show-WorktreeStatus {
+    Write-Host "Worktree Status in ${WORKSPACE_DIR}:"
+    if (-not (Test-Path $WORKSPACE_DIR)) {
+        Write-Host "  No repositories found."
+        return
+    }
+
+    Get-ChildItem $WORKSPACE_DIR | ForEach-Object {
+        if (Test-Path (Join-Path $_.FullName ".bare")) {
+            Write-Host "- $($_.Name)" -ForegroundColor Cyan
+            $bareDir = Join-Path $_.FullName ".bare"
+            $lines = git -C $bareDir worktree list --porcelain
+            $entry = @{}
+            foreach ($line in $lines) {
+                if ($line -eq "") {
+                    if ($entry.path) {
+                        $branch = if ($entry.branch) { $entry.branch } else { "(detached)" }
+                        Write-Host "    - $branch ($($entry.path))"
+                        if ($entry.locked) { Write-Host "      $($entry.locked)" }
+                        if ($entry.prunable) { Write-Host "      $($entry.prunable)" }
+                    }
+                    $entry = @{}
+                    continue
+                }
+                if ($line -match "^worktree\s+(.+)$") { $entry.path = $matches[1] }
+                elseif ($line -match "^branch\s+(.+)$") { $entry.branch = $matches[1] }
+                elseif ($line -match "^locked") { $entry.locked = $line }
+                elseif ($line -match "^prunable") { $entry.prunable = $line }
+            }
+            if ($entry.path) {
+                $branch = if ($entry.branch) { $entry.branch } else { "(detached)" }
+                Write-Host "    - $branch ($($entry.path))"
+                if ($entry.locked) { Write-Host "      $($entry.locked)" }
+                if ($entry.prunable) { Write-Host "      $($entry.prunable)" }
+            }
+        }
+    }
+}
+
 # Main Dispatch
 Check-Deps
 
@@ -521,6 +690,9 @@ switch ($command) {
             }
         }
     }
+    "status" {
+        Show-WorktreeStatus
+    }
     "uninstall" {
         $confirm = Read-Host "Uninstall MAWT? (yes/no)"
         if ($confirm -eq "yes") {
@@ -533,6 +705,7 @@ switch ($command) {
         Write-Host "  (No args)  Start interactive workflow"
         Write-Host "  init <repo> Initialize repository"
         Write-Host "  list       List repositories"
+        Write-Host "  status     Show worktree status across repositories"
         Write-Host "  uninstall  Remove MAWT"
     }
     Default {
