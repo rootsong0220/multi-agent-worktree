@@ -260,6 +260,7 @@ select_worktree_action() {
 create_new_worktree() {
     local repo_dir="$1"
     cd "$repo_dir/.bare"
+    local created_new_branch="false"
 
     # 1. Select Base Branch
     echo "Select Base Branch:"
@@ -302,7 +303,27 @@ create_new_worktree() {
     else
         # Create new branch tracking origin
         git worktree add "$TARGET_WORKTREE" -b "$NEW_BRANCH" "origin/$BASE_BRANCH"
+        created_new_branch="true"
     fi
+
+    if [ "$created_new_branch" == "true" ]; then
+        setup_upstream_for_new_branch "$repo_dir" "$TARGET_WORKTREE" "$NEW_BRANCH"
+    fi
+}
+
+setup_upstream_for_new_branch() {
+    local repo_dir="$1"
+    local worktree_path="$2"
+    local branch_name="$3"
+
+    if git -C "$repo_dir/.bare" show-ref --verify --quiet "refs/remotes/origin/$branch_name"; then
+        git -C "$worktree_path" branch --set-upstream-to="origin/$branch_name" "$branch_name"
+        echo "Upstream set to origin/$branch_name."
+        return 0
+    fi
+
+    echo "Remote branch origin/$branch_name not found. Creating and setting upstream..."
+    git -C "$worktree_path" push -u origin "$branch_name"
 }
 
 # ------------------------------------------------------------------

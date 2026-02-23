@@ -391,6 +391,7 @@ function Select-Worktree {
 function Create-NewWorktree {
     param ($RepoDir)
     Push-Location (Join-Path $RepoDir ".bare")
+    $createdNewBranch = $false
     
     Write-Host "Fetching branches..."
     $branches = git branch -r | Where-Object { $_ -notmatch "HEAD" } | ForEach-Object { $_.Trim() -replace "^origin/", "" }
@@ -436,6 +437,7 @@ function Create-NewWorktree {
         } else {
             # Create a genuinely new local branch
             $commandArgs += "-b"; $commandArgs += "$worktreeTargetBranchName"; $commandArgs += "origin/$baseBranch"
+            $createdNewBranch = $true
         }
     } else {
         # User left branch name empty, meaning they want to attach to the existing $baseBranch
@@ -503,9 +505,31 @@ function Create-NewWorktree {
             Write-Warning "Git command produced stderr output, but exited with code 0: $($stderrContent.Trim())"
         }
         Write-Host "Worktree for '$worktreeTargetBranchName' created at $targetPath." -ForegroundColor Green
+        if ($createdNewBranch) {
+            Set-UpstreamForNewBranch -RepoDir $RepoDir -WorktreePath $targetPath -BranchName $worktreeTargetBranchName
+        }
         Pop-Location
         return $targetPath
     }
+}
+
+function Set-UpstreamForNewBranch {
+    param (
+        [string]$RepoDir,
+        [string]$WorktreePath,
+        [string]$BranchName
+    )
+
+    $bareDir = Join-Path $RepoDir ".bare"
+    git -C $bareDir show-ref --verify --quiet "refs/remotes/origin/$BranchName" | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        git -C $WorktreePath branch --set-upstream-to="origin/$BranchName" $BranchName | Out-Null
+        Write-Host "Upstream set to origin/$BranchName." -ForegroundColor Green
+        return
+    }
+
+    Write-Host "Remote branch origin/$BranchName not found. Creating and setting upstream..." -ForegroundColor Yellow
+    git -C $WorktreePath push -u origin $BranchName
 }
 
 # 4. Agent Launch
